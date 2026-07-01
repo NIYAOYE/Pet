@@ -6,8 +6,12 @@
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
                    font-family: system-ui, sans-serif; font-size: 13px; }
+      /* 按住对话框本体任意空白处即可拖动整窗(OS 级拖拽);交互控件单独设为 no-drag */
       #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px;
-               padding: 8px; color: #f0f0f4; }
+               padding: 8px; color: #f0f0f4; cursor: move; -webkit-app-region: drag; }
+      #input, button, #history { -webkit-app-region: no-drag; }
+      #input { cursor: text; }
+      #history, .msg { cursor: default; }
 
       /* 气泡:仅常态显示最新回复,可淡出 */
       #bubble { align-self: flex-start; max-width: 90%; padding: 6px 10px; border-radius: 12px;
