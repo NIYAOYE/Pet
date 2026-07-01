@@ -3,7 +3,6 @@
   "version": "0.0.1",
   "description": "Desktop pet with an agent kernel",
   "main": "./out/main/index.js",
-  "type": "module",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "pnpm typecheck && electron-vite build",
