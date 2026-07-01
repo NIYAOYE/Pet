@@ -39,6 +39,9 @@ function setCollapsed(c: boolean): void {
   toggleBtn.textContent = c ? '⤢' : '⤡'
   toggleBtn.title = c ? '展开' : '收起'
   window.chatApi.setSize(c)
+  // Returning to collapsed: re-show the last reply bubble (its fade timer may have
+  // elapsed while expanded/hidden), so the thin bar shows the latest reply again.
+  if (c && bubble.textContent) showBubble(bubble.textContent)
 }
 
 function submit(): void {
