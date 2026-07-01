@@ -17,6 +17,7 @@ export class SpritePlayer {
   ) {}
 
   play(state: string): void {
+    this.stop()
     const anim = this.manifest.animations[state]
     if (!anim) return
     this.state = state
