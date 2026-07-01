@@ -1,7 +1,7 @@
-import { app, ipcMain, type Tray } from 'electron'
+import { app, ipcMain, screen, type Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IPC, type MoveDelta } from '@shared/ipc'
+import { IPC, type MoveDelta, type WindowBounds } from '@shared/ipc'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
@@ -27,6 +27,12 @@ export function startShell(): void {
   })
   ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, ignore: boolean) => {
     petWin.setIgnoreMouseEvents(ignore, { forward: true })
+  })
+  ipcMain.handle(IPC.GET_WINDOW_BOUNDS, async (): Promise<WindowBounds> => {
+    const [x, y] = petWin.getPosition()
+    const [width, height] = petWin.getSize()
+    const workArea = screen.getDisplayMatching({ x, y, width, height }).workArea
+    return { workArea, window: { x, y, width, height } }
   })
   ipcMain.on(IPC.QUIT, () => app.quit())
 

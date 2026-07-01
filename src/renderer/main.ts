@@ -1,4 +1,7 @@
 import { SpritePlayer } from './spritePlayer'
+import { PetController } from './petController'
+
+const DRAG_THRESHOLD = 4
 
 async function boot(): Promise<void> {
   const canvas = document.getElementById('pet') as HTMLCanvasElement
@@ -9,13 +12,16 @@ async function boot(): Promise<void> {
   await sheet.decode()
 
   const player = new SpritePlayer(canvas, sheet, manifest)
-  player.play('idle')
+  const controller = new PetController(player)
+  await controller.start()
 
-  // 拖拽移动窗口 + 透明区域点击穿透
   let dragging = false
+  let moved = false
+  let ignoring = false
   let lastX = 0
   let lastY = 0
-  let ignoring = false
+  let downX = 0
+  let downY = 0
 
   function setIgnore(ignore: boolean): void {
     if (ignore === ignoring) return
@@ -25,23 +31,35 @@ async function boot(): Promise<void> {
 
   canvas.addEventListener('mousedown', (e: MouseEvent) => {
     dragging = true
-    lastX = e.screenX
-    lastY = e.screenY
+    moved = false
+    lastX = e.screenX; lastY = e.screenY
+    downX = e.screenX; downY = e.screenY
     canvas.style.cursor = 'grabbing'
   })
+
   window.addEventListener('mousemove', (e: MouseEvent) => {
     if (dragging) {
-      window.petApi.moveWindow({ dx: e.screenX - lastX, dy: e.screenY - lastY })
-      lastX = e.screenX
-      lastY = e.screenY
+      if (!moved && Math.abs(e.screenX - downX) + Math.abs(e.screenY - downY) > DRAG_THRESHOLD) {
+        moved = true
+        controller.send('pickup')
+      }
+      if (moved) {
+        window.petApi.moveWindow({ dx: e.screenX - lastX, dy: e.screenY - lastY })
+        lastX = e.screenX; lastY = e.screenY
+      }
       return
     }
-    // 光标在露露卡不透明像素上 → 可交互;否则让点击穿透到下层窗口
     setIgnore(!player.isPetPixel(e.clientX, e.clientY))
   })
+
   window.addEventListener('mouseup', () => {
+    if (!dragging) return
     dragging = false
     canvas.style.cursor = 'grab'
+    if (moved) {
+      controller.send('drop')
+      void controller.syncBounds() // 手动拖动后重新同步窗口 X
+    }
   })
 }
 
