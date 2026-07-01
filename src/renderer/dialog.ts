@@ -1,0 +1,58 @@
+import type { ChatMessage } from '@shared/ipc'
+
+const BUBBLE_MS = 4000
+
+const panel = document.getElementById('panel') as HTMLElement
+const bubble = document.getElementById('bubble') as HTMLElement
+const history = document.getElementById('history') as HTMLElement
+const input = document.getElementById('input') as HTMLInputElement
+const toggleBtn = document.getElementById('toggle') as HTMLButtonElement
+const sendBtn = document.getElementById('send') as HTMLButtonElement
+
+let collapsed = true
+let bubbleTimer: number | null = null
+
+function showBubble(text: string): void {
+  bubble.textContent = text
+  bubble.classList.add('show')
+  if (bubbleTimer !== null) clearTimeout(bubbleTimer)
+  bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), BUBBLE_MS)
+}
+
+function render(messages: ChatMessage[]): void {
+  history.innerHTML = ''
+  for (const m of messages) {
+    const el = document.createElement('div')
+    el.className = `msg ${m.role}`
+    el.textContent = m.text
+    history.appendChild(el)
+  }
+  history.scrollTop = history.scrollHeight
+  const lastPet = [...messages].reverse().find((m) => m.role === 'pet')
+  if (lastPet) showBubble(lastPet.text)
+}
+
+function setCollapsed(c: boolean): void {
+  collapsed = c
+  panel.classList.toggle('collapsed', c)
+  panel.classList.toggle('expanded', !c)
+  toggleBtn.textContent = c ? '⤢' : '⤡'
+  toggleBtn.title = c ? '展开' : '收起'
+  window.chatApi.setSize(c)
+  // Returning to collapsed: re-show the last reply bubble (its fade timer may have
+  // elapsed while expanded/hidden), so the thin bar shows the latest reply again.
+  if (c && bubble.textContent) showBubble(bubble.textContent)
+}
+
+function submit(): void {
+  const text = input.value.trim()
+  if (!text) return
+  window.chatApi.send({ text })
+  input.value = ''
+}
+
+toggleBtn.addEventListener('click', () => setCollapsed(!collapsed))
+sendBtn.addEventListener('click', submit)
+input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit() })
+window.chatApi.onUpdate(render)
+setCollapsed(true)
