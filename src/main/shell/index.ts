@@ -1,4 +1,4 @@
-import { app, ipcMain } from 'electron'
+import { app, ipcMain, type Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { IPC, type MoveDelta } from '@shared/ipc'
@@ -6,8 +6,12 @@ import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
 
+// Held at module scope so the Tray isn't garbage-collected (which would make
+// the tray icon vanish); mirrors MVP-01's module-level tray reference.
+let tray: Tray | null = null
+
 export function startShell(): void {
-  const dirname = fileURLToPath(new URL('.', import.meta.url)) // out/main
+  const dirname = fileURLToPath(new URL('.', import.meta.url)) // resolves to out/main/ at runtime (electron-vite bundles shell into out/main/index.js)
   const appRoot = app.isPackaged ? process.resourcesPath : join(dirname, '../..')
   const preload = join(dirname, '../preload/index.js')
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
@@ -26,5 +30,5 @@ export function startShell(): void {
   })
   ipcMain.on(IPC.QUIT, () => app.quit())
 
-  createTray(join(appRoot, 'resources/tray.png'))
+  tray = createTray(join(appRoot, 'resources/tray.png'))
 }
