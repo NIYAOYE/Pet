@@ -88,9 +88,16 @@ function enterWalk(ctx: PetBrainCtx, rng: () => number): PetBrainCtx {
   return { ...ctx, state: 'walk', dir, stateElapsedMs: 0, walkRemainingPx: dist }
 }
 
-// Task 2 会把各事件分支填满;此处先透传(仅供 Task 1 通过)。
-function applyEvent(ctx: PetBrainCtx, _event: PetEvent, _rng: () => number): PetBrainCtx {
-  return ctx
+function applyEvent(ctx: PetBrainCtx, event: PetEvent, rng: () => number): PetBrainCtx {
+  switch (event) {
+    case 'pickup': return { ...enterState(ctx, 'drag'), idleAccumMs: 0 }
+    case 'drop': return { ...enterIdle(ctx, rng), idleAccumMs: 0 }
+    case 'wake': return { ...enterIdle(ctx, rng), idleAccumMs: 0 }
+    case 'dialogOpen': return { ...enterState(ctx, 'greet'), idleAccumMs: 0 }
+    case 'messageSent': return { ...enterState(ctx, 'thinking'), idleAccumMs: 0 }
+    case 'replyDone': return { ...enterState(ctx, 'talk'), idleAccumMs: 0 }
+    default: return ctx
+  }
 }
 
 export function step(ctx: PetBrainCtx, input: StepInput): { ctx: PetBrainCtx; effects: StepEffects } {

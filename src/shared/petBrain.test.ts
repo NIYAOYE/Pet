@@ -93,3 +93,43 @@ describe('petBrain autonomous', () => {
     expect(asleep.ctx.state).toBe('sleep')
   })
 })
+
+describe('petBrain events', () => {
+  it('pickup → drag, drop → idle', () => {
+    let res = step(initBrain(), input({ event: 'pickup' }))
+    expect(res.ctx.state).toBe('drag')
+    res = step(res.ctx, input({ event: 'drop', rng: () => 0.5 }))
+    expect(res.ctx.state).toBe('idle')
+  })
+
+  it('messageSent → thinking (persists), replyDone → talk → idle', () => {
+    let res = step(initBrain(), input({ event: 'messageSent' }))
+    expect(res.ctx.state).toBe('thinking')
+    res = step(res.ctx, input({ dtMs: 5000 })) // persists without event
+    expect(res.ctx.state).toBe('thinking')
+    res = step(res.ctx, input({ event: 'replyDone' }))
+    expect(res.ctx.state).toBe('talk')
+    res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.talkMs + 10, rng: () => 0.5 }))
+    expect(res.ctx.state).toBe('idle')
+  })
+
+  it('dialogOpen → greet → idle after greetMs', () => {
+    let res = step(initBrain(), input({ event: 'dialogOpen' }))
+    expect(res.ctx.state).toBe('greet')
+    res = step(res.ctx, input({ dtMs: DEFAULT_BRAIN_CONFIG.greetMs + 10, rng: () => 0.5 }))
+    expect(res.ctx.state).toBe('idle')
+  })
+
+  it('wake from sleep returns to idle and resets the sleep timer', () => {
+    const sleeping = { ...initBrain(), state: 'sleep' as const, idleAccumMs: 99999 }
+    const res = step(sleeping, input({ event: 'wake', rng: () => 0.5 }))
+    expect(res.ctx.state).toBe('idle')
+    expect(res.ctx.idleAccumMs).toBe(0)
+  })
+
+  it('any interaction resets the sleep timer (pickup)', () => {
+    const almost = { ...initBrain(), idleAccumMs: 40000 }
+    const res = step(almost, input({ event: 'pickup' }))
+    expect(res.ctx.idleAccumMs).toBe(0)
+  })
+})
