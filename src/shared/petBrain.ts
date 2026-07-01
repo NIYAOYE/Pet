@@ -33,7 +33,7 @@ export interface PetBrainCtx {
   dir: Direction
   stateElapsedMs: number
   dwellMs: number
-  idleAccumMs: number
+  idleAccumMs: number // 距上次"用户交互"的累计时长;自主游走不重置它(仅用户事件在 applyEvent 里重置),用于从 idle 漂移入睡
   walkRemainingPx: number
   config: PetBrainConfig
 }
@@ -113,7 +113,6 @@ export function step(ctx: PetBrainCtx, input: StepInput): { ctx: PetBrainCtx; ef
       break
     }
     case 'walk': {
-      if (next.idleAccumMs >= cfg.sleepAfterIdleMs) { next = enterState(next, 'sleep'); break }
       const stepPx = cfg.walkSpeedPxPerSec * (input.dtMs / 1000)
       let dx = next.dir === 'left' ? -stepPx : stepPx
       const minX = input.bounds.x

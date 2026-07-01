@@ -65,4 +65,31 @@ describe('petBrain autonomous', () => {
     }
     expect(res.ctx.state).toBe('sleep')
   })
+
+  it('does not fall asleep mid-walk; only drifts to sleep once idle', () => {
+    const walking = {
+      ...initBrain(),
+      state: 'walk' as const,
+      dir: 'right' as const,
+      walkRemainingPx: 10000,
+      idleAccumMs: DEFAULT_BRAIN_CONFIG.sleepAfterIdleMs - 100
+    }
+    const res = step(walking, input({ dtMs: 5000, windowX: 100, rng: () => 0.5 }))
+    expect(res.ctx.idleAccumMs).toBeGreaterThanOrEqual(DEFAULT_BRAIN_CONFIG.sleepAfterIdleMs)
+    expect(res.ctx.state).toBe('walk') // still walking, NOT asleep mid-stride
+  })
+
+  it('carries accumulated idle time across a walk so it sleeps once idle', () => {
+    const walking = {
+      ...initBrain(),
+      state: 'walk' as const,
+      dir: 'right' as const,
+      walkRemainingPx: 1,
+      idleAccumMs: DEFAULT_BRAIN_CONFIG.sleepAfterIdleMs + 1000
+    }
+    const afterWalk = step(walking, input({ dtMs: 100, windowX: 100, rng: () => 0.5 })) // walk ends → idle
+    expect(afterWalk.ctx.state).toBe('idle')
+    const asleep = step(afterWalk.ctx, input({ dtMs: 100, rng: () => 0.9 })) // idle branch sees timer past threshold
+    expect(asleep.ctx.state).toBe('sleep')
+  })
 })
