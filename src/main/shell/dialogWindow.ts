@@ -1,4 +1,4 @@
-import { BrowserWindow } from 'electron'
+import { BrowserWindow, screen } from 'electron'
 import { IPC, type ChatMessage } from '@shared/ipc'
 
 const COLLAPSED = { width: 320, height: 130 }
@@ -62,7 +62,13 @@ export function createDialogController(opts: {
       if (!win) win = build()
       const pet = getPetBounds()
       const s = collapsed ? COLLAPSED : EXPANDED
-      win.setBounds({ x: pet.x + pet.width, y: pet.y, width: s.width, height: s.height })
+      const area = screen.getDisplayMatching({ x: pet.x, y: pet.y, width: pet.width, height: 1 }).workArea
+      // Prefer right of the pet; flip to the left if it would overflow the display's right edge.
+      let x = pet.x + pet.width
+      if (x + s.width > area.x + area.width) x = pet.x - s.width
+      x = Math.max(area.x, Math.min(x, area.x + area.width - s.width))
+      const y = Math.max(area.y, Math.min(pet.y, area.y + area.height - s.height))
+      win.setBounds({ x, y, width: s.width, height: s.height })
       win.show()
       win.focus()
       opts.onOpened()

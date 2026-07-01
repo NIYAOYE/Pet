@@ -11,6 +11,7 @@ const petApi: PetApi = {
   getWindowBounds: (): Promise<WindowBounds> => ipcRenderer.invoke(IPC.GET_WINDOW_BOUNDS),
   toggleDialog: (): void => ipcRenderer.send(IPC.TOGGLE_DIALOG),
   onPetEvent: (cb: (event: PetEvent) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.PET_EVENT)
     ipcRenderer.on(IPC.PET_EVENT, (_e, event: PetEvent) => cb(event))
   },
   quit: (): void => ipcRenderer.send(IPC.QUIT)
@@ -19,6 +20,7 @@ const petApi: PetApi = {
 const chatApi: ChatApi = {
   send: (payload: ChatSendPayload): void => ipcRenderer.send(IPC.CHAT_SEND, payload),
   onUpdate: (cb: (messages: ChatMessage[]) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.CHAT_UPDATE)
     ipcRenderer.on(IPC.CHAT_UPDATE, (_e, messages: ChatMessage[]) => cb(messages))
   },
   setSize: (collapsed: boolean): void => ipcRenderer.send(IPC.DIALOG_SET_SIZE, collapsed),
