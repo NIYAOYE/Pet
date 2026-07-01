@@ -1,12 +1,13 @@
 import { app, ipcMain, screen, type Tray } from 'electron'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { IPC, type MoveDelta, type WindowBounds } from '@shared/ipc'
+import { IPC, type MoveDelta, type WindowBounds, type ChatSendPayload } from '@shared/ipc'
 import type { PetEvent } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
 import { createDialogController } from './dialogWindow'
+import { createChatStore } from './chat'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
@@ -32,7 +33,16 @@ export function startShell(): void {
     preload,
     url: rendererUrl ? `${rendererUrl}/dialog.html` : undefined,
     dialogHtml,
-    onOpened: () => emitPetEvent('dialogOpen')
+    onOpened: () => {
+      emitPetEvent('dialogOpen')
+      dialog.pushUpdate(chat.messages())
+    }
+  })
+
+  const chat = createChatStore({
+    petDir,
+    emitPetEvent,
+    pushUpdate: (msgs) => dialog.pushUpdate(msgs)
   })
 
   function petBounds(): { x: number; y: number; width: number } {
@@ -57,6 +67,7 @@ export function startShell(): void {
     petWin.setIgnoreMouseEvents(ignore, { forward: true })
   })
   ipcMain.on(IPC.TOGGLE_DIALOG, () => toggleDialog())
+  ipcMain.on(IPC.CHAT_SEND, (_e, payload: ChatSendPayload) => chat.handleSend(payload))
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, collapsed: boolean) => dialog.setSize(!!collapsed))
   ipcMain.on(IPC.QUIT, () => app.quit())
 
