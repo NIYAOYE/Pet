@@ -35,6 +35,8 @@ function createWindow(): void {
   } else {
     win.loadFile(join(__dirname, '../renderer/index.html'))
   }
+
+  win.on('closed', () => { win = null })
 }
 
 function createTray(): void {
