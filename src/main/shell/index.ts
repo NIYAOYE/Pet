@@ -14,6 +14,7 @@ import type { PetEvent } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
+import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createChatStore } from './chat'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
@@ -54,6 +55,12 @@ export function startShell(): void {
   const settingsFile = join(app.getPath('userData'), 'settings.json')
   const secrets = createSecretStore(join(app.getPath('userData'), 'secrets.bin'), safeStorage)
 
+  const settings = createSettingsWindow({
+    preload,
+    url: rendererUrl ? `${rendererUrl}/settings.html` : undefined,
+    settingsHtml: join(dirname, '../renderer/settings.html')
+  })
+
   const chat = createChatStore({
     petDir,
     loadSettings: () => loadSettings(settingsFile),
@@ -66,7 +73,7 @@ export function startShell(): void {
     openSettings: () => openSettings()
   })
 
-  function openSettings(): void { /* Task 10 接入 settingsWindow */ }
+  function openSettings(): void { settings.open() }
 
   function petBounds(): { x: number; y: number; width: number } {
     const [x, y] = petWin.getPosition()
@@ -121,7 +128,9 @@ export function startShell(): void {
   ipcMain.on(IPC.QUIT, () => app.quit())
 
   registerHotkeys(toggleDialog)
-  tray = createTray(join(appRoot, 'resources/tray.png'))
+  tray = createTray(join(appRoot, 'resources/tray.png'), openSettings)
+
+  if (!secrets.hasKey()) openSettings()
 
   app.on('will-quit', () => unregisterHotkeys())
 }
