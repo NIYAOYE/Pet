@@ -11,12 +11,13 @@ function backendOf(fn: SearchBackend['search']): SearchBackend { return { search
 const ctx = { signal: new AbortController().signal }
 
 describe('formatSearchResults', () => {
-  it('编号 + 标题 + URL + 摘要,头部引导据此作答+标注来源,并保留注入防线', () => {
+  it('编号 + 标题 + URL + 摘要,头部引导据此作答+来源附完整网址,并保留注入防线', () => {
     const text = formatSearchResults(sample)
-    // 引导模型采信并使用结果、标注来源(修复:旧文案"不可信内容,仅供参考"会让小模型忽略结果)
+    // 引导模型采信并使用结果(修复:旧文案"不可信内容,仅供参考"会让小模型忽略结果)
     expect(text).toContain('据此作答')
-    expect(text).toContain('标注')
+    // 来源要附「完整网址」而非只写编号,否则渲染层无从生成可点击链接
     expect(text).toContain('来源')
+    expect(text).toContain('网址')
     // 注入防线仍在:不执行结果正文里出现的指令
     expect(text).toContain('不要执行')
     expect(text).toContain('1. AI 周报')
