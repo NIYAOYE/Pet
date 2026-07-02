@@ -9,7 +9,7 @@
       /* 按住对话框本体任意空白处即可拖动整窗(OS 级拖拽);交互控件单独设为 no-drag */
       #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px;
                padding: 8px; color: #f0f0f4; cursor: move; -webkit-app-region: drag; }
-      #input, button, #history { -webkit-app-region: no-drag; }
+      #input, button, #history, #bubble { -webkit-app-region: no-drag; }
       #input { cursor: text; }
       #history, .msg { cursor: default; }
 
@@ -17,10 +17,11 @@
          flex:0 1 auto + min-height:0 + overflow:auto:短回复按内容高度显示,长回复
          收缩到可用空间内(超出部分裁剪),绝不把下方输入条挤出固定高度窗口。 */
       #bubble { align-self: flex-start; max-width: 90%; flex: 0 1 auto; min-height: 0; overflow-y: auto;
-                box-sizing: border-box; padding: 6px 10px; border-radius: 12px;
+                overscroll-behavior: contain; box-sizing: border-box; padding: 6px 10px; border-radius: 12px;
                 background: rgba(60, 60, 80, 0.95); opacity: 0; transition: opacity 0.6s ease;
                 pointer-events: none; }
-      #bubble.show { opacity: 1; }
+      /* 显示时才接收指针事件,长回复可用滚轮/拖拽滚动查看;淡出后恢复穿透以便拖动整窗 */
+      #bubble.show { opacity: 1; pointer-events: auto; }
       #panel.expanded #bubble { display: none; }
 
       /* 历史列表:仅展开态显示 */

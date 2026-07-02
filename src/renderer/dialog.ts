@@ -85,4 +85,11 @@ window.chatApi.onError((message) => {
   history.appendChild(el)
   history.scrollTop = history.scrollHeight
 })
+
+// 渲染层是折叠态的唯一真源:窗口每次重新显示时,把当前折叠态重新告知主进程,
+// 纠正主进程窗口尺寸与面板态可能出现的不同步(否则展开后关闭再开会卡在错误尺寸,无法恢复)。
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') window.chatApi.setSize(collapsed)
+})
+
 setCollapsed(true)
