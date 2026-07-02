@@ -13,8 +13,11 @@
       #input { cursor: text; }
       #history, .msg { cursor: default; }
 
-      /* 气泡:仅常态显示最新回复,可淡出 */
-      #bubble { align-self: flex-start; max-width: 90%; padding: 6px 10px; border-radius: 12px;
+      /* 气泡:仅常态显示最新回复,可淡出。
+         flex:0 1 auto + min-height:0 + overflow:auto:短回复按内容高度显示,长回复
+         收缩到可用空间内(超出部分裁剪),绝不把下方输入条挤出固定高度窗口。 */
+      #bubble { align-self: flex-start; max-width: 90%; flex: 0 1 auto; min-height: 0; overflow-y: auto;
+                box-sizing: border-box; padding: 6px 10px; border-radius: 12px;
                 background: rgba(60, 60, 80, 0.95); opacity: 0; transition: opacity 0.6s ease;
                 pointer-events: none; }
       #bubble.show { opacity: 1; }
@@ -31,8 +34,8 @@
       .msg.user { align-self: flex-end; background: rgba(90, 110, 200, 0.95); }
       .msg.pet { align-self: flex-start; background: rgba(60, 60, 80, 0.95); }
 
-      /* 输入条:永不被压缩,始终留在窗口底部可见 */
-      #bar { display: flex; flex-shrink: 0; gap: 6px; align-items: center;
+      /* 输入条:永不被压缩,margin-top:auto 把它钉在窗口底部,始终可见 */
+      #bar { display: flex; flex-shrink: 0; margin-top: auto; gap: 6px; align-items: center;
              background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 6px; }
       #input { flex: 1; border: none; outline: none; border-radius: 8px; padding: 6px 8px;
                background: rgba(255, 255, 255, 0.12); color: #f0f0f4; }
