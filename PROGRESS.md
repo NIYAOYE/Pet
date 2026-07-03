@@ -1,6 +1,6 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-03 · 状态:**MVP-06(打包 + 可移植宠物包 + IPC 校验)代码完成、`pnpm dist` 打包产出验证通过,待真机安装验收**
+> 更新时间:2026-07-03 · 状态:**MVP-06(打包 + 可移植宠物包 + IPC 校验)已完成、真机验收通过(C:/D: 正常运行)**
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
@@ -85,7 +85,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-03** LLM Provider 抽象(Fake/Anthropic/OpenAI 兼容)+ 密钥 safeStorage 存储 + 首启设置窗 + Agent 循环护栏 + 逐字流式回复 + §5.6 运行时边界
 - ✅ **MVP-04** 多轮工具调用(原生 function-calling + 统一 tool_use chunk + ≤6 轮回灌)+ web_search 工具(DuckDuckGo 免 key / Tavily 可选)+ 渐进式 Skill 加载器 + read_skill 工具 + `skills/web-summary` 技能 + 对话框安全 Markdown 渲染 + 来源链接外开
 - ✅ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 记忆引导 + save_memory 工具
-- 🟡 **MVP-06** electron-builder NSIS 打包(每用户免管理员/未签名)+ 可移植宠物包(首启播种 userData + 记忆随宠物 + activePetId 可配 schemaVersion 4 + 旧 memory 一次性迁移)+ §11.2 IPC payload 校验加固 —— 代码完成 + `pnpm dist` 产出验证,**待真机安装验收**
+- ✅ **MVP-06** electron-builder NSIS 打包(每用户免管理员/未签名)+ 可移植宠物包(首启播种 userData + 记忆随宠物 + activePetId 可配 schemaVersion 4 + 旧 memory 一次性迁移)+ §11.2 IPC payload 校验加固 —— 真机验收通过(C:/D: 安装正常运行)
 
 > 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化。
 
@@ -102,8 +102,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - MVP-05(分层记忆):184 条单测通过,全量回归(test/typecheck/build)通过,根 README.md 新增隐私告知(embedding 端点可选)。真机验收通过:记住事实/重启后仍记得/embedding 可选配置召回/删除 vector-index.json 自动重建/记忆文件夹可打开,均确认符合预期。**persona.md 的 save_memory 引导已在磁盘副本应用,合并到 main 后同样需在 main 的磁盘副本重新应用。**
 - MVP-05 遗留 Minor(详见账本):同一 embedding 模型名指向不同维度端点时,索引不重建、静默召回为空(不影响事实安全,仅极端误配置场景);"未配置 Provider"占位回复现在会持久化进 transcript.json(行为变化,纯 cosmetic);`maybeSummarize` 在 chat.ts 内的实际触发缺集成测试覆盖(隔离单测已覆盖逻辑本身);建议给 chat.ts 的回合 IIFE 加 `.catch()` 做防御性兜底(当前两个 await 调用均不会抛,非阻塞项)。
 - **MVP-06** 打包/可移植宠物/IPC 校验(详见账本 `.superpowers/sdd/progress.md` 的 MVP-06 段):**构建坑**——`pnpm dist` 在普通 Windows 终端会因 `winCodeSign` 内 darwin `.dylib` 符号链接无权限而失败(即使不签名);解法见 README「打包构建说明」(开发者模式 / 管理员 / 预解压缓存跳过 darwin,本机已用第 3 种)。遗留 Minor:Task 1 的 `renderer/settings.ts` `currentActivePetId` 在 `getSettings()` 异步解析前硬编码默认,极端早点击保存可能覆盖已切换的 activePetId(暂无换宠物 UI,低概率);`settingsMigration.test.ts` 描述串仍写"v3"(断言已改 4);ipcValidation 缺 attachments happy-path 与 MAX_TEXT/MAX_KEY 边界值测试;petHome.ts renameSync 前的 mkdirSync 在可达路径里是 no-op。**已在实现中修复的非 Minor**:`activePetId` 指向未随包分发的宠物时 shell 回退默认宠物(否则 startShell 抛错 → 无窗口静默启动失败)。
-- **MVP-06 真机崩溃 bug(已修复 9b0973b)**:打包版双击(无控制台 GUI)启动秒退闪崩——早期写 stdout/stderr(无效句柄)触发未捕获异常 → abort(事件日志 0x80000003)。**`pnpm preview` 有有效终端 stdout 故永不复现,必须测真机双击的打包 exe**。修复见 `src/main/index.ts`:给 process.stdout/stderr 挂 'error' 处理器 + uncaughtException/unhandledRejection/whenReady().catch → 落 `userData/startup-crash.log` + 启动失败弹框。遗留可选:单实例锁(两实例共享 userData profile 竞争,与本 bug 无关)。
-- **MVP-06 待办**:真机安装验收(装 `dist/*.exe` → 宠物渲染/托盘/对话/记忆落 `%APPDATA%\Pet-Agent\pets\luluka\memory`/编辑 persona 生效/拷走宠物文件夹可移植/改 activePetId 换宠物/卸载不丢数据);**pets/luluka 的 persona.md 引导**(据此作答/附URL/save_memory)因 gitignore 仅在磁盘,合并到 main 后需在 main 磁盘副本重新应用(承接 MVP-04/05 同款遗留)。
+- **MVP-06 真机崩溃 bug(已修复,最终版 6f38185)**:打包版双击秒退闪崩。**真正根因**(靠 WER minidump 定位,非事件日志能看出):GPU 子进程以 `0xC0000135`(找不到 DLL)退出 → 主进程 `LOG(FATAL) gpu_data_manager_impl_private.cc(449) "GPU process isn't usable"`(事件日志 0x80000003)。**修复:`app.disableHardwareAcceleration()`**(改 SwiftShader 软件渲染,DLL 随包分发)。**切勿再加 `--in-process-gpu`**——虽也不崩但窗口一片空白。排查中先按"stdout 无控制台句柄"误判过一版(9b0973b,已被 6f38185 覆盖修正)。**且崩溃是盘符相关**:仅装在 E:(第二块 NVMe、NTFS 权限非标准:含显式 RESTRICTED + AppContainer SID)时复现;C:/D: 正常。Chromium 沙箱子进程对盘符 ACL 敏感。用户接受"装 C:/D:"、不改 E: 权限。**关键教训**:`pnpm preview`(有效终端 stdout + 正常启动上下文)永不暴露此类打包/GPU/盘符问题;且 **Claude Code agent 会话(非交互/Session-0)跑不起打包 GUI 的 GPU 路径,无法本地复现,只能靠用户 + 崩溃转储**。诊断法见 `src/main/index.ts` 注释与记忆 [[packaged-gui-gpu-crash]]:开 WER LocalDumps → `%LOCALAPPDATA%\CrashDumps` 全转储 → python `minidump` 解析 → 在转储字节里搜 `FATAL:...cc(NNN)` 字符串得确切 CHECK。`src/main/index.ts` 另加了 uncaughtException/whenReady().catch → 落 `userData/startup-crash.log`(+ `%TEMP%\pet-agent-startup.log`)+ 启动失败弹框,杜绝静默秒退。(装 `dist/*.exe` → 宠物渲染/托盘/对话/记忆落 `%APPDATA%\Pet-Agent\pets\luluka\memory`/编辑 persona 生效/拷走宠物文件夹可移植/改 activePetId 换宠物/卸载不丢数据);**pets/luluka 的 persona.md 引导**(据此作答/附URL/save_memory)因 gitignore 仅在磁盘,合并到 main 后需在 main 磁盘副本重新应用(承接 MVP-04/05 同款遗留)。
 
 ## 8. 给新会话的提醒
 
