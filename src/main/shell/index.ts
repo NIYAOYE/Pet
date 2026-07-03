@@ -1,5 +1,6 @@
-import { app, ipcMain, safeStorage, screen, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, type Tray } from 'electron'
 import { join } from 'node:path'
+import { mkdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import {
   IPC,
@@ -56,6 +57,8 @@ export function startShell(): void {
   const settingsFile = join(app.getPath('userData'), 'settings.json')
   const secrets = createSecretStore(join(app.getPath('userData'), 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-tavily.bin'), safeStorage)
+  const embeddingSecrets = createSecretStore(join(app.getPath('userData'), 'secrets-embedding.bin'), safeStorage)
+  const memoryDir = join(app.getPath('userData'), 'memory')
   // 产品运行时技能:仓库根 skills/(打包后随 resources 分发,MVP-06 处理拷贝)
   const skills = loadSkills(join(appRoot, 'skills'))
 
@@ -125,11 +128,17 @@ export function startShell(): void {
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
     settings: loadSettings(settingsFile),
     hasKey: secrets.hasKey(),
-    hasSearchKey: searchSecrets.hasKey()
+    hasSearchKey: searchSecrets.hasKey(),
+    hasEmbeddingKey: embeddingSecrets.hasKey()
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, s: AppSettings) => { saveSettings(settingsFile, s) })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, key: string): Promise<boolean> => secrets.setKey(String(key ?? '')))
   ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, key: string): Promise<boolean> => searchSecrets.setKey(String(key ?? '')))
+  ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, key: string): Promise<boolean> => embeddingSecrets.setKey(String(key ?? '')))
+  ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
+    mkdirSync(memoryDir, { recursive: true })
+    void electronShell.openPath(memoryDir)
+  })
   ipcMain.handle(IPC.TEST_CONNECTION, async (_e, arg: { provider: ProviderSettings; key: string }): Promise<TestResult> =>
     testConnection(arg.provider, arg.key)
   )
