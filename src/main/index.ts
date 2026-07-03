@@ -26,14 +26,14 @@ process.on('uncaughtException', (e) => logDiag('uncaughtException', e))
 process.on('unhandledRejection', (e) => logDiag('unhandledRejection', e))
 
 /**
- * 真机双击崩溃根因(用户机崩溃转储确认):GPU 子进程以 0xC0000135 退出 →
+ * 真机双击崩溃根因(用户机崩溃转储确认):硬件 GPU 子进程以 0xC0000135 退出 →
  * 主进程 FATAL "GPU process isn't usable. Goodbye."(事件日志 0x80000003)秒退。
- * 对策:① 禁用硬件加速走软件渲染;② --in-process-gpu 让 GPU 跑在主进程内、
- * 不再派生独立 GPU 子进程,从根上消除"GPU 子进程启动失败"这一崩溃点。
- * 小透明置顶精灵窗对软件/进程内渲染性能无感。必须在 app ready 前设置。
+ * 对策:禁用硬件加速 → 改用 SwiftShader 软件渲染(其 DLL 随包分发,不依赖该机缺失的
+ * 硬件图形 DLL),既消除崩溃又能正常出画。小透明置顶精灵窗对软件渲染性能无感。
+ * 注:曾叠加 --in-process-gpu,虽也不崩但会导致窗口一片空白(合成/绘制异常),已移除。
+ * 必须在 app ready 前设置。
  */
 app.disableHardwareAcceleration()
-app.commandLine.appendSwitch('in-process-gpu')
 
 app.whenReady()
   .then(() => startShell())
