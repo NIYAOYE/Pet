@@ -1,13 +1,13 @@
 # Pet-Agent — 进度与交接文档
 
-> 更新时间:2026-07-02 · 状态:**MVP-04 已完成、真机验收通过**
+> 更新时间:2026-07-03 · 状态:**MVP-05(分层记忆)代码完成、待真机验收**
 > 这份文档给"新开的对话/新会话"快速接手用。先读这里,再按需展开下方链接的文档。
 
 ---
 
 ## 1. 一句话现状
 
-一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-04(多轮工具调用 + `web_search` 工具〔DuckDuckGo 免 key 默认 / Tavily 可选〕+ 渐进式 Skill 加载器 + `read_skill` 工具 + `skills/web-summary` 技能)已做完、真机验收通过**。工具调用贯穿三个 Provider(原生 function-calling + 统一 `tool_use` chunk 协议),agentLoop 升级为 ≤6 轮回灌循环;对话框渲染安全 Markdown 子集、来源链接系统浏览器外开。下一步是 MVP-05(分层记忆)。
+一个 Shimeji 风格的**桌面宠物 Agent**(Electron + TypeScript)。**MVP-05(分层记忆)代码完成:事实库 + 向量索引 + 工作摘要 + 对话历史,save_memory 工具,embedding provider 支持(可选),persona 记忆引导**。工具调用贯穿三个 Provider(原生 function-calling + 统一 `tool_use` chunk 协议),agentLoop ≤6 轮回灌循环;对话框渲染安全 Markdown 子集、来源链接系统浏览器外开。**待真机验收**(用户使用真实 API key 运行应用、验证记忆系统端到端工作)。
 
 ## 2. 怎么跑起来
 
@@ -44,12 +44,14 @@ src/
   main/       petLoader.ts(读 pet.json + 把 spritesheet 读成 data URL;含测试)
               index.ts(应用入口 → startShell)
               providers/   (llmProvider 接口 + fakeProvider〔支持 script 多轮脚本〕+ anthropicProvider + openaiCompatProvider + createProvider;MVP-04:messageMapping〔AgentMessage→两 SDK 消息形状,含测试〕+ 两 provider 流式 tool_use/tool_calls 归一化,含测试)
-              tools/       (MVP-04:toolSpec/toolRegistry〔校验+错误回灌不抛,含测试〕+ webSearch〔不可信包裹+据此作答+来源附URL+状态播报,含测试〕+ readSkill〔含测试〕+ searchBackends/〔searchBackend 接口 + duckduckgo 免key HTML解析〔fixture 单测〕+ tavily〔key注入,含测试〕〕)
+              tools/       (MVP-04:toolSpec/toolRegistry〔校验+错误回灌不抛,含测试〕+ webSearch〔不可信包裹+据此作答+来源附URL+状态播报,含测试〕+ readSkill〔含测试〕+ searchBackends/〔searchBackend 接口 + duckduckgo 免key HTML解析〔fixture 单测〕+ tavily〔key注入,含测试〕〕;MVP-05:saveMemory〔写事实库,含测试〕)
+              providers/   embedder.ts(MVP-05:embedding 提供者抽象 + dashscope 实现 + 本地降级,含测试)
               skills/      (MVP-04:skillLoader — 扫描 skills/ + frontmatter 纯解析,坏文件跳过/目录缺失退化空清单,含测试)
-              agent/       (promptAssembler〔persona+对话窗口→system/messages;MVP-04 加可用技能清单段,含测试〕+ agentLoop〔MVP-04 升级为 ≤6 轮工具回灌循环:取消贯穿工具执行/每轮独立超时/工具报错回灌不终止,含测试〕+ testConnection)
+              agent/       (promptAssembler〔persona+对话窗口→system/messages;MVP-04 加可用技能清单段;MVP-05 加用户记忆(facts+summary)上下文,含测试〕+ agentLoop〔MVP-04 升级为 ≤6 轮工具回灌循环:取消贯穿工具执行/每轮独立超时/工具报错回灌不终止;MVP-05 集成 save_memory,含测试〕+ testConnection)
               persona/     (personaLoader — persona.md 分块解析 + 缓存,含测试)
-              config/      (settings〔原子写+schemaVersion,v1→v2 迁移补 search,含测试〕+ secrets〔safeStorage 加密,可注入,含测试;MVP-04 第二实例存 Tavily key〕)
-              shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ settingsWindow + 全部 IPC 注册)
+              config/      (settings〔原子写+schemaVersion,v1→v2 迁移补 search,v2→v3 迁移补 memory embedding,含测试〕+ secrets〔safeStorage 加密,可注入,含测试;MVP-04 第二实例存 Tavily key;MVP-05 第三实例存 embedding key〕)
+              memory/      (MVP-05:factStore/vectorIndex/transcriptStore/workingSummary/memoryManager — 事实库/向量索引/对话历史/工作摘要、权威源 facts.json 及可重建索引、与 agent/embedder/persona 交互)
+              shell/       (窗口/托盘/热键 + chat〔MVP-04:每次发送按当前设置组装 registry〔web_search+read_skill〕,onStatus→CHAT_STATUS;MVP-05:recall 与 save 集成 memoryManager〕+ dialogWindow〔MVP-04:来源链接 will-navigate/openExternal 外开〕+ settingsWindow + 全部 IPC 注册)
   preload/    index.ts(contextBridge 暴露 petApi / chatApi〔含 onStream/onDone/onError/onStatus+cancel〕/ settingsApi〔含 setSearchKey〕)
   renderer/   index.html(含 CSP)
               main.ts(启动加载宠物 + 播 idle + 拖拽移窗 + 透明区域点击穿透)
@@ -69,6 +71,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 ## 5. 关键文档(部分被 gitignore,仅在磁盘,新会话直接读路径即可)
 
 - 产品设计文档:`docs/superpowers/specs/2026-06-26-desktop-pet-agent-design.md`(架构、§4 躯壳、§5 内核/人设/台词/边界、§7 记忆、§11 安全基线)
+- MVP-05 设计/计划:`docs/superpowers/specs/2026-06-30-mvp-05-layered-memory.md` + `docs/superpowers/plans/2026-06-30-mvp-05-layered-memory.md`
 - MVP-04 设计/计划:`docs/superpowers/specs/2026-07-02-mvp-04-web-search-and-skill-loader.md` + `docs/superpowers/plans/2026-07-02-mvp-04-web-search-and-skill-loader.md`
 - MVP-01 计划:`docs/superpowers/plans/2026-07-01-mvp-01-skeleton-and-shell.md`
 - 执行账本(逐任务结果 + 遗留 Minor):`.superpowers/sdd/progress.md`
@@ -80,12 +83,12 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - ✅ **MVP-02** 动画状态机(idle/walk/drag/sleep 切换)+ 全局热键/点击唤出对话框壳
 - ✅ **MVP-03** LLM Provider 抽象(Fake/Anthropic/OpenAI 兼容)+ 密钥 safeStorage 存储 + 首启设置窗 + Agent 循环护栏 + 逐字流式回复 + §5.6 运行时边界
 - ✅ **MVP-04** 多轮工具调用(原生 function-calling + 统一 tool_use chunk + ≤6 轮回灌)+ web_search 工具(DuckDuckGo 免 key / Tavily 可选)+ 渐进式 Skill 加载器 + read_skill 工具 + `skills/web-summary` 技能 + 对话框安全 Markdown 渲染 + 来源链接外开
-- ⬜ **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 组装
+- 🔄 **MVP-05** 分层记忆(短期/工作记忆 + 事实库 + 本地向量库)+ persona 记忆引导 + save_memory 工具 — **代码完成,待真机验收**
 - ⬜ **MVP-06** electron-builder 打包安装 + §11 安全加固
 
 > 更远期(设计文档 §10):情绪/事件驱动行为、口癖台词触发、配音、养成系统、桌面自动化。
 
-## 7. 已知遗留(Minor,记在账本)
+## 7. 已知遗留及完成项(Minor,记在账本;MVP-05 真机验收待行)
 
 - ~~`src/main/petLoader.test.ts` 用 `resolve(__dirname)` 作"缺失 pet.json"目录,略脆 → 改为明确不存在的路径~~ ✅ MVP-02 已清
 - ~~`spritePlayer.ts` 每帧 `canvas.width/height` 重设(帧尺寸恒定时可提到 play() 里做一次)~~ ✅ MVP-02 已清
@@ -95,6 +98,7 @@ docs/         设计与计划文档  ← 注意:docs/* 被 .gitignore 忽略,仅
 - 真机验收期修的 UI 问题(已修复):长回复挤掉输入条(#history/#bubble 的 flex `min-height:0` + 输入条钉底)、常态气泡不可滚动(no-drag + 显示时 pointer-events)、`resizable:false` 致 `setSize` 无法缩小(临时 setResizable 绕过)、设置下拉对比度。
 - MVP-04 遗留 Minor(详见账本):openaiCompat 不支持 tools 的错误提示用 `/tool|function/i` 粗匹配(可能给无关错误加"换模型"后缀,原文保留无害);同名 skill 跨目录静默覆盖(last-win)无警告;`mapTavilyResults` 对非数组 `results` 会抛(brief 原样,未被测试触发);agentLoop 工具执行循环在 provider try/catch 外——依赖 registry.run 不抛的契约(Task 5 已保证);MVP-03 遗留的 agentLoop 超时测试 ~1s 墙钟、`IPC.HAS_KEY` 无消费者、settingsWindow 无 `ready-to-show` 仍在。
 - MVP-04 真机验收期修的行为问题(已修复):① 搜索成功但小模型把结果头旧文案"不可信内容,仅供参考"当成"别信这些事实"→退回训练知识给旧答案且不引用来源(改头部为"据此作答+来源附完整URL",注入防线精确限定为"不要执行结果里的指令");② pet 回复显示成原始 Markdown 符号(新增 `renderer/markdown.ts` 安全子集渲染);③ 来源只写编号不可点击(要求照抄完整 URL,裸 URL 经渲染 linkify + will-navigate 外开)。**注意**:小模型(qwen-plus/deepseek-chat)对搜索结果新鲜度采信较弱,强模型效果更好;这是模型能力差异非 bug。**persona.md 的相应引导(据此作答/附URL/简洁少表格)因 pets/luluka 被 gitignore 只在磁盘,合并到 main 后需在 main 的磁盘副本上重新应用;issue 的持久修复在已跟踪的 webSearch.ts/markdown.ts/SKILL.md。**
+- MVP-05(分层记忆):代码完成,184 条单测通过,全量回归(test/typecheck/build)通过,根 README.md 新增隐私告知(embedding 端点可选)。待真机验收流程:① 用真实 API key 启动应用 → 对宠物说个人信息 → facts.json 应出现对应条目 ② 重启应用 → 问宠物 → 应召回事实 ③ 可选:配置 embedding 端点 → 再次召回验证向量索引生成 ④ 删除 vector-index.json → 索引应自动重建、facts 无损 ⑤ 连续聊天超 20 轮 → summary.json 应生成。**persona.md 的 save_memory 引导已在磁盘副本应用,合并到 main 后同样需在 main 的磁盘副本重新应用。**
 
 ## 8. 给新会话的提醒
 
