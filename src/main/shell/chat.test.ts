@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import { mkdtempSync, rmSync, readFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createChatStore } from './chat'
+import { createChatStore, buildQuickActionPreview, MAX_CLIPBOARD_CHARS } from './chat'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
 import type { LlmProvider, StreamChatRequest } from '../providers/llmProvider'
@@ -13,7 +13,8 @@ const settings: AppSettings = {
   activePetId: 'luluka',
   provider: { kind: 'fake', model: 'fake' },
   search: { backend: 'duckduckgo' },
-  memory: { embedding: null }
+  memory: { embedding: null },
+  textTools: { autoCopyResult: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {
@@ -24,8 +25,9 @@ let dir: string
 beforeEach(() => { dir = mkdtempSync(join(tmpdir(), 'chat-')) })
 afterEach(() => { rmSync(dir, { recursive: true, force: true }) })
 
-function makeStore(provider: LlmProvider, seen: StreamChatRequest[]) {
+function makeStore(provider: LlmProvider, seen: StreamChatRequest[], clip?: { readText?: () => string; writeText?: (t: string) => void }) {
   const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
+  const written: string[] = []
   let done: () => void = () => {}
   const finished = new Promise<void>((r) => { done = r })
   const store = createChatStore({
@@ -37,6 +39,7 @@ function makeStore(provider: LlmProvider, seen: StreamChatRequest[]) {
     getSearchKey: () => null,
     makeProvider: () => recording(provider, seen),
     prepareImages: (atts) => atts.map((a) => ({ mimeType: a.mimeType, dataBase64: a.dataBase64 })),
+    clipboard: { readText: clip?.readText ?? (() => ''), writeText: clip?.writeText ?? ((t) => { written.push(t) }) },
     emitPetEvent: () => {},
     pushUpdate: () => {},
     pushStream: () => {},
@@ -45,7 +48,7 @@ function makeStore(provider: LlmProvider, seen: StreamChatRequest[]) {
     pushError: () => done(),
     openSettings: () => {}
   })
-  return { store, memory, finished }
+  return { store, memory, finished, written }
 }
 
 describe('chat 记忆管道(集成:fake provider + 退化召回)', () => {
@@ -131,5 +134,52 @@ describe('chat 图像', () => {
     const { store } = makeStore(createFakeProvider({ reply: 'ok' }), seen)
     store.handleSend({ text: '   ' })
     expect(seen.length).toBe(0)
+  })
+})
+
+describe('MVP-08 runQuickAction', () => {
+  it('buildQuickActionPreview 生成占位:label + 截断预览', () => {
+    expect(buildQuickActionPreview('总结要点', 'a'.repeat(50))).toBe(`【总结要点】${'a'.repeat(20)}…`)
+    expect(buildQuickActionPreview('翻译', '短')).toBe('【翻译】短')
+  })
+
+  it('剪贴板空 → 报错,不发起模型调用', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store } = makeStore(createFakeProvider({ reply: 'x' }), seen, { readText: () => '' })
+    store.runQuickAction('translate')
+    expect(seen.length).toBe(0)
+  })
+
+  it('剪贴板原文喂当轮 prompt,但 transcript 只存占位(不含原文)', async () => {
+    const seen: StreamChatRequest[] = []
+    // 原文刻意 > 20 字(buildQuickActionPreview 的截断阈值),否则短原文会被整段保留进占位符,
+    // 使"不含原文"断言恒假——这是本计划先前的一处测试数据缺陷,已在实现阶段发现并修正。
+    const original = `需要翻译的原文${'Z'.repeat(20)}`
+    const { store, finished } = makeStore(createFakeProvider({ reply: '译文' }), seen, { readText: () => original })
+    store.runQuickAction('translate')
+    await finished
+    const last = seen[0].messages[seen[0].messages.length - 1] as { role: string; content: string }
+    expect(last.content).toContain(original)                     // 喂给模型:完整原文
+    const raw = readFileSync(join(dir, 'memory', 'transcript.json'), 'utf-8')
+    expect(raw).not.toContain(original)                           // 不落盘:完整原文不出现
+    expect(raw).toContain('【翻译(中↔英)】')                     // 占位在
+  })
+
+  it('autoCopyResult 开启时把结果写回剪贴板', async () => {
+    settings.textTools = { autoCopyResult: true }
+    const seen: StreamChatRequest[] = []
+    const { store, finished, written } = makeStore(createFakeProvider({ reply: '译文结果' }), seen, { readText: () => 'hello' })
+    store.runQuickAction('translate')
+    await finished
+    expect(written).toContain('译文结果')
+    settings.textTools = { autoCopyResult: false } // 复位,避免影响其它用例
+  })
+
+  it('快捷动作不带工具(空 registry)', async () => {
+    const seen: StreamChatRequest[] = []
+    const { store, finished } = makeStore(createFakeProvider({ reply: 'ok' }), seen, { readText: () => 'x' })
+    store.runQuickAction('summarize')
+    await finished
+    expect(seen[0].tools).toBeUndefined()
   })
 })

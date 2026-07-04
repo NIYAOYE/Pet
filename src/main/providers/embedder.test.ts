@@ -57,7 +57,8 @@ describe('resolveEmbeddingKey', () => {
     activePetId: 'luluka',
     provider: { kind: 'openai-compat', baseURL: chatBaseURL, model: 'm' },
     search: { backend: 'duckduckgo' },
-    memory: { embedding: embBaseURL ? { baseURL: embBaseURL, model: 'e' } : null }
+    memory: { embedding: embBaseURL ? { baseURL: embBaseURL, model: 'e' } : null },
+    textTools: { autoCopyResult: false }
   })
   it('有独立 key 优先用', () => {
     expect(resolveEmbeddingKey(base('https://a/v1', 'https://a/v1'), 'ek', 'ck')).toBe('ek')

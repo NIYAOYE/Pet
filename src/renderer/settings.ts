@@ -12,6 +12,7 @@ const searchKey = $<HTMLInputElement>('searchKey')
 const embBaseURL = $<HTMLInputElement>('embBaseURL')
 const embModel = $<HTMLInputElement>('embModel')
 const embKey = $<HTMLInputElement>('embKey')
+const autoCopyResult = $<HTMLInputElement>('autoCopyResult')
 let currentActivePetId = 'luluka' // default, will be overwritten on init
 
 for (const p of PRESETS) {
@@ -80,7 +81,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       activePetId: currentActivePetId,
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
-      memory: { embedding }
+      memory: { embedding },
+      textTools: { autoCopyResult: autoCopyResult.checked }
     })
     status.textContent = '✓ 已保存'
   } catch (err) {
@@ -104,5 +106,6 @@ void (async () => {
     embModel.value = snap.settings.memory.embedding.model
   }
   if (snap.hasEmbeddingKey) embKey.placeholder = '(已配置,如需更换请重新填写)'
+  autoCopyResult.checked = snap.settings.textTools.autoCopyResult
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
 })()
