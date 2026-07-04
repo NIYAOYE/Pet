@@ -13,7 +13,8 @@ const settings: AppSettings = {
   activePetId: 'luluka',
   provider: { kind: 'fake', model: 'fake' },
   search: { backend: 'duckduckgo' },
-  memory: { embedding: null }
+  memory: { embedding: null },
+  textTools: { autoCopyResult: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {

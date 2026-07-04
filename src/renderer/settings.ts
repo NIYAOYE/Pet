@@ -80,7 +80,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       activePetId: currentActivePetId,
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
-      memory: { embedding }
+      memory: { embedding },
+      textTools: { autoCopyResult: false }
     })
     status.textContent = '✓ 已保存'
   } catch (err) {

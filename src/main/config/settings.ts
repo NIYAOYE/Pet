@@ -27,12 +27,15 @@ export function normalizeSettings(raw: unknown): AppSettings {
     typeof e.model === 'string' && e.model.length > 0
       ? { baseURL: e.baseURL, model: e.model }
       : null
+  const tt = (r.textTools ?? {}) as Record<string, unknown>
+  const autoCopyResult = tt.autoCopyResult === true
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
     provider: { kind, model, baseURL },
     search: { backend },
-    memory: { embedding }
+    memory: { embedding },
+    textTools: { autoCopyResult }
   }
 }
 

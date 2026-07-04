@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest'
 import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { loadSettings } from './settings'
+import { loadSettings, normalizeSettings } from './settings'
 
 describe('settings v1 → v2 迁移', () => {
   const dirs: string[] = []
@@ -21,7 +21,7 @@ describe('settings v1 → v2 迁移', () => {
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(4)
+    expect(s.schemaVersion).toBe(5)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
@@ -49,7 +49,7 @@ describe('settings v1 → v2 迁移', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
     expect(s.memory).toEqual({ embedding: null })
-    expect(s.schemaVersion).toBe(4)
+    expect(s.schemaVersion).toBe(5)
   })
 })
 
@@ -71,7 +71,7 @@ describe('v2 -> v3 迁移(memory)', () => {
       search: { backend: 'tavily' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(4)
+    expect(s.schemaVersion).toBe(5)
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
     expect(s.search.backend).toBe('tavily')
@@ -97,5 +97,29 @@ describe('v2 -> v3 迁移(memory)', () => {
       memory: { embedding: { baseURL: 'https://x.example/v1' } }
     }))
     expect(loadSettings(file).memory.embedding).toBeNull()
+  })
+})
+
+describe('MVP-08 textTools 迁移', () => {
+  it('缺失 textTools 时补默认 autoCopyResult:false 且 schemaVersion 升到 5', () => {
+    const out = normalizeSettings({
+      schemaVersion: 4,
+      activePetId: 'luluka',
+      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+      search: { backend: 'duckduckgo' },
+      memory: { embedding: null }
+    })
+    expect(out.schemaVersion).toBe(5)
+    expect(out.textTools).toEqual({ autoCopyResult: false })
+  })
+
+  it('保留已存的 autoCopyResult:true', () => {
+    const out = normalizeSettings({ textTools: { autoCopyResult: true } })
+    expect(out.textTools.autoCopyResult).toBe(true)
+  })
+
+  it('textTools 非法值退化为默认 false', () => {
+    const out = normalizeSettings({ textTools: { autoCopyResult: 'yes' } })
+    expect(out.textTools.autoCopyResult).toBe(false)
   })
 })
