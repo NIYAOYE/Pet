@@ -24,6 +24,7 @@ import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
 import { prepareImage } from '../media/imagePrep'
+import { captureRegion } from '../media/screenCapture'
 import { DEFAULT_SETTINGS } from '@shared/llm'
 import type { ChatSendAttachment } from '@shared/ipc'
 import {
@@ -42,6 +43,8 @@ export function startShell(): void {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const petHtml = join(dirname, '../renderer/index.html')
   const dialogHtml = join(dirname, '../renderer/dialog.html')
+  const overlayHtml = join(dirname, '../renderer/regionOverlay.html')
+  const overlayUrl = rendererUrl ? `${rendererUrl}/regionOverlay.html` : undefined
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
   // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
@@ -202,6 +205,13 @@ export function startShell(): void {
       }
     }
     return out
+  })
+
+  ipcMain.handle(IPC.MEDIA_CAPTURE_REGION, async (): Promise<ChatSendAttachment | null> => {
+    const [x, y] = petWin.getPosition()
+    const [w, h] = petWin.getSize()
+    const display = screen.getDisplayMatching({ x, y, width: w, height: h })
+    return captureRegion({ preload, overlayHtml, overlayUrl, display })
   })
 
   ipcMain.on(IPC.OPEN_SETTINGS, () => openSettings())
