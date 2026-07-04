@@ -23,6 +23,7 @@ import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
+import { prepareImage } from '../media/imagePrep'
 import { DEFAULT_SETTINGS } from '@shared/llm'
 import {
   validateMoveDelta, validateBool, validateChatSend,
@@ -116,6 +117,7 @@ export function startShell(): void {
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
+    prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     emitPetEvent,
     pushUpdate: (msgs) => dialog.pushUpdate(msgs),
     pushStream: (t) => dialog.window()?.webContents.send(IPC.CHAT_STREAM, t),
