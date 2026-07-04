@@ -1,8 +1,7 @@
 import { cpSync, existsSync, readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { parsePetManifest } from '@shared/petPackage'
-
-export interface PetSummary { id: string; displayName: string; description: string }
+import type { PetSummary, ImportResult } from '@shared/ipc'
 
 /** 合法宠物 id:仅字母数字下划线连字符,拒绝路径分隔/穿越。与 config/settings.ts 的正则同源。 */
 export function isValidPetId(v: unknown): boolean {
@@ -43,11 +42,6 @@ export function listPets(dirs: { bundledPetsDir: string; userPetsDir: string }):
   for (const s of scanDir(dirs.userPetsDir)) byId.set(s.id, s) // userData 覆盖内置
   return [...byId.values()].sort((a, b) => a.displayName.localeCompare(b.displayName, 'en'))
 }
-
-export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists'
-export type ImportResult =
-  | { ok: true; pet: PetSummary }
-  | { ok: false; reason: ImportReason; message: string }
 
 /**
  * 校验外部宠物文件夹并导入到 userData/pets/<id>。校验链任一失败即返回,不复制。
