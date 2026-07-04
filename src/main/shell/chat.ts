@@ -103,7 +103,7 @@ export function createChatStore(opts: {
       inFlight = ctrl
       let acc = ''
       void (async () => {
-        const { system, messages } = assemblePrompt(persona, opts.memory.messages(), opts.skills.list())
+        const { system, messages } = assemblePrompt(persona, opts.memory.messages())
         // 把 指令 + 反注入头 + 剪贴板原文 作为当轮 user content(原文只在此处、不落盘)
         const lastUser = messages[messages.length - 1]
         if (lastUser && lastUser.role === 'user') {
