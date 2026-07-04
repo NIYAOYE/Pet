@@ -25,7 +25,12 @@ function scanDir(petsRoot: string): PetSummary[] {
   const out: PetSummary[] = []
   for (const name of readdirSync(petsRoot)) {
     const petDir = join(petsRoot, name)
-    if (!statSync(petDir).isDirectory()) continue
+    try {
+      if (!statSync(petDir).isDirectory()) continue
+    } catch (e) {
+      console.warn('[petCatalog] 跳过无法访问的目录项', petDir, e)
+      continue
+    }
     const s = readSummary(petDir)
     if (s) out.push(s)
   }
@@ -70,6 +75,10 @@ export function importPetFolder(
   if (existsSync(join(dirs.bundledPetsDir, manifest.id)) || existsSync(join(dirs.userPetsDir, manifest.id))) {
     return { ok: false, reason: 'id-exists', message: `id「${manifest.id}」已存在,请修改宠物包 pet.json 的 id 后重试` }
   }
-  cpSync(srcDir, join(dirs.userPetsDir, manifest.id), { recursive: true })
+  try {
+    cpSync(srcDir, join(dirs.userPetsDir, manifest.id), { recursive: true })
+  } catch (e) {
+    return { ok: false, reason: 'copy-failed', message: `导入失败:${(e as Error).message}` }
+  }
   return { ok: true, pet: { id: manifest.id, displayName: manifest.displayName, description: manifest.description } }
 }

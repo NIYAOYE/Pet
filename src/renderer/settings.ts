@@ -65,13 +65,17 @@ async function refreshPets(selectId: string): Promise<void> {
 }
 
 importPetBtn.addEventListener('click', async () => {
-  const res = await window.settingsApi.importPet()
-  if (!res) return // 用户取消,静默
-  if (res.ok) {
-    await refreshPets(res.pet.id)
-    status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
-  } else {
-    status.textContent = `✗ ${res.message}`
+  try {
+    const res = await window.settingsApi.importPet()
+    if (!res) return // 用户取消,静默
+    if (res.ok) {
+      await refreshPets(res.pet.id)
+      status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
+    } else {
+      status.textContent = `✗ ${res.message}`
+    }
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
   }
 })
 

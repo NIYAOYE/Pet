@@ -97,7 +97,7 @@ export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasS
 export interface TestResult { ok: boolean; error?: string }
 
 export interface PetSummary { id: string; displayName: string; description: string }
-export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists'
+export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists' | 'copy-failed'
 export type ImportResult =
   | { ok: true; pet: PetSummary }
   | { ok: false; reason: ImportReason; message: string }
