@@ -111,7 +111,7 @@ export interface SettingsApi {
   openMemoryDir(): void
   testConnection(provider: ProviderSettings, key: string): Promise<TestResult>
   listPets(): Promise<PetSummary[]>
-  importPet(): Promise<ImportResult>
+  importPet(): Promise<ImportResult | null>
   relaunch(): void
 }
 
