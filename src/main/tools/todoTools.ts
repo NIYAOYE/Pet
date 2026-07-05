@@ -5,9 +5,11 @@ import { sortTodos, classify, formatRelative, MAX_TITLE_LEN, type TodoItem } fro
 function resolveTarget(items: TodoItem[], arg: { id?: unknown; title?: unknown }):
   { ok: true; item: TodoItem } | { ok: false; message: string } {
   if (typeof arg.id === 'string' && arg.id.length > 0) {
-    const byId = items.find((it) => it.id === arg.id)
-    if (byId) return { ok: true, item: byId }
-    return { ok: false, message: `没找到 id 为「${arg.id}」的待办。用 list_todos 看看现有待办。` }
+    const idQuery = arg.id
+    const idMatches = items.filter((it) => it.id.startsWith(idQuery))
+    if (idMatches.length === 1) return { ok: true, item: idMatches[0] }
+    if (idMatches.length === 0) return { ok: false, message: `没找到 id 为「${idQuery}」的待办。用 list_todos 看看现有待办。` }
+    return { ok: false, message: `有多条待办的 id 都以「${idQuery}」开头,请提供更长的 id 前缀。` }
   }
   if (typeof arg.title === 'string' && arg.title.trim().length > 0) {
     const q = arg.title.trim()

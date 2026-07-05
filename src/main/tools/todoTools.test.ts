@@ -100,4 +100,36 @@ describe('complete_todo / remove_todo', () => {
     expect(store.list()).toEqual([])
     cleanup()
   })
+  it('list_todos 展示的 6 位 id 前缀能被 complete_todo 精确定位(即便标题有共同子串导致 title 匹配歧义)', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'todotools-idprefix-'))
+    let seed = 0
+    // now 固定,靠 rand 递增制造不同 id(与 make() 的固定 rand 不同,避免两条待办 id 相同)
+    const store = createTodoStore({
+      file: join(dir, 'todos.json'),
+      now: () => NOW,
+      rand: () => {
+        seed += 1
+        return seed / 3
+      }
+    })
+    const tools = createTodoTools({ store, now: () => NOW })
+    const byName = (n: string) => tools.find((t) => t.name === n)!
+
+    const a = store.add({ title: '买东西-苹果', dueAt: null })
+    const b = store.add({ title: '买东西-香蕉', dueAt: null })
+    expect(a.id).not.toBe(b.id)
+
+    // title 按此 query 会匹配到两条,构造歧义场景
+    const ambiguous = await byName('complete_todo').run({ title: '买东西' }, ctx)
+    expect(ambiguous).toContain('多条')
+
+    const prefixA = a.id.slice(0, 6)
+    expect(b.id.startsWith(prefixA)).toBe(false)
+    const out = await byName('complete_todo').run({ id: prefixA }, ctx)
+    expect(out).toContain('买东西-苹果')
+    expect(store.list().find((it) => it.id === a.id)!.done).toBe(true)
+    expect(store.list().find((it) => it.id === b.id)!.done).toBe(false)
+
+    rmSync(dir, { recursive: true, force: true })
+  })
 })

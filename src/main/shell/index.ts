@@ -115,8 +115,8 @@ export function startShell(): void {
     })
   }
   const memory = createMemoryManager({ dir: memoryDir, getEmbedder })
-  // 待办随宠物家目录走(与 memory 同一惯例),文件本身由 Task 2 的 todoStore 负责原子读写
-  const todoStore = createTodoStore({ file: join(petHome, 'todos.json') })
+  // 待办是用户的、非宠物皮肤的数据——全局存储,换宠物(petHome 会变)也不能丢/分叉待办
+  const todoStore = createTodoStore({ file: join(userData, 'todos.json') })
 
   const chat = createChatStore({
     petDir,
