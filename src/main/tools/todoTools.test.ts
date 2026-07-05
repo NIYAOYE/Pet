@@ -100,6 +100,33 @@ describe('complete_todo / remove_todo', () => {
     expect(store.list()).toEqual([])
     cleanup()
   })
+  it('某条待办的完整 id 恰好是另一条 id 的字符串前缀时,精确匹配优先,不误判为歧义', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'todotools-exactid-'))
+    // 精心构造 rand 序列,使得两条待办共享相同的 now(36) 前缀段,
+    // 且第一条的完整 id("...-1")恰好是第二条 id("...-11")的字符串前缀。
+    const rands = [1.5e-9, 3.75e-8]
+    let i = 0
+    const store = createTodoStore({
+      file: join(dir, 'todos.json'),
+      now: () => NOW,
+      rand: () => rands[i++]
+    })
+    const tools = createTodoTools({ store, now: () => NOW })
+    const byName = (n: string) => tools.find((t) => t.name === n)!
+
+    const shorter = store.add({ title: '短 id 待办', dueAt: null })
+    const longer = store.add({ title: '长 id 待办', dueAt: null })
+    expect(longer.id.startsWith(shorter.id)).toBe(true)
+    expect(shorter.id).not.toBe(longer.id)
+
+    const out = await byName('complete_todo').run({ id: shorter.id }, ctx)
+    expect(out).not.toContain('多条')
+    expect(out).toContain('短 id 待办')
+    expect(store.list().find((it) => it.id === shorter.id)!.done).toBe(true)
+    expect(store.list().find((it) => it.id === longer.id)!.done).toBe(false)
+
+    rmSync(dir, { recursive: true, force: true })
+  })
   it('list_todos 展示的 6 位 id 前缀能被 complete_todo 精确定位(即便标题有共同子串导致 title 匹配歧义)', async () => {
     const dir = mkdtempSync(join(tmpdir(), 'todotools-idprefix-'))
     let seed = 0

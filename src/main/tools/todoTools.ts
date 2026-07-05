@@ -6,6 +6,8 @@ function resolveTarget(items: TodoItem[], arg: { id?: unknown; title?: unknown }
   { ok: true; item: TodoItem } | { ok: false; message: string } {
   if (typeof arg.id === 'string' && arg.id.length > 0) {
     const idQuery = arg.id
+    const exact = items.find((it) => it.id === idQuery)
+    if (exact) return { ok: true, item: exact }
     const idMatches = items.filter((it) => it.id.startsWith(idQuery))
     if (idMatches.length === 1) return { ok: true, item: idMatches[0] }
     if (idMatches.length === 0) return { ok: false, message: `没找到 id 为「${idQuery}」的待办。用 list_todos 看看现有待办。` }
