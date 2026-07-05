@@ -45,9 +45,7 @@ ROW_DEFS: list[dict[str, object]] = [
         "state": "idle",
         "row": 0,
         "frames": 6,
-        # Rest-biased so idle reads as calm: long hold on the neutral frame,
-        # brief motion, then a hold — avoids a hyperactive/fidgety loop.
-        "durations": [1600, 260, 260, 300, 300, 1000],
+        "durations": [280, 110, 110, 140, 140, 320],
         "loop": True,
         "phase": "mvp",
         "purpose": "calm breathing/blinking idle loop",
