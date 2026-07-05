@@ -1,4 +1,4 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, type Tray } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -14,6 +14,7 @@ import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
+import { createTodoWindow } from './todoWindow'
 import { createChatStore } from './chat'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { loadSettings, saveSettings, normalizeSettings } from '../config/settings'
@@ -23,15 +24,17 @@ import { loadSkills } from '../skills/skillLoader'
 import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { createTodoStore } from '../todos/todoStore'
+import { createScheduler } from '../todos/scheduler'
 import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
 import { DEFAULT_SETTINGS } from '@shared/llm'
 import type { ChatSendAttachment } from '@shared/ipc'
+import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
-  validateKey, validateTestConnectionArg, MAX_ATTACHMENTS
+  validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS
 } from '@shared/ipcValidation'
 
 // Held at module scope so the Tray isn't garbage-collected (which would make
@@ -136,6 +139,41 @@ export function startShell(): void {
     pushError: (m) => dialog.window()?.webContents.send(IPC.CHAT_ERROR, m),
     openSettings: () => openSettings()
   })
+
+  const todoPanelHtml = join(dirname, '../renderer/todoPanel.html')
+  const todoWin = createTodoWindow({
+    preload,
+    url: rendererUrl ? `${rendererUrl}/todoPanel.html` : undefined,
+    todoHtml: todoPanelHtml
+  })
+
+  // 到点三件套:系统通知 + 宠物 greet + 气泡 + 自动弹面板高亮
+  function fireReminder(item: TodoItem): void {
+    if (Notification.isSupported()) new Notification({ title: '⏰ 提醒', body: item.title }).show()
+    emitPetEvent('remind')
+    if (!dialog.isOpen()) dialog.toggle(petBounds)
+    dialog.window()?.webContents.send(IPC.CHAT_STATUS, `⏰ 提醒:${item.title}`)
+    todoWin.open()
+    todoWin.pushFired(item.id)
+  }
+  function catchupReminders(items: TodoItem[]): void {
+    const title = items.length > 1 ? `⏰ ${items.length} 条提醒已过期` : '⏰ 提醒'
+    const body = items.length > 1 ? items.map((i) => i.title).join('、') : items[0].title
+    if (Notification.isSupported()) new Notification({ title, body }).show()
+    emitPetEvent('remind')
+    todoWin.open()
+    todoWin.pushFired(items[0].id)
+  }
+
+  const scheduler = createScheduler({
+    store: todoStore,
+    now: () => Date.now(),
+    onFire: fireReminder,
+    onCatchup: catchupReminders
+  })
+
+  // store 变更(工具/面板/到点)→ 推面板刷新(scheduler 已自行订阅重算)
+  todoStore.onChange(() => todoWin.pushUpdate(todoStore.list()))
 
   function openSettings(): void { settings.open() }
 
@@ -261,16 +299,37 @@ export function startShell(): void {
   })
   ipcMain.on(IPC.QUIT, () => app.quit())
 
+  ipcMain.handle(IPC.LIST_TODOS, async () => todoStore.list())
+  ipcMain.handle(IPC.ADD_TODO, async (_e, raw) => {
+    const input = validateTodoAdd(raw)
+    if (input) todoStore.add(input)
+    return todoStore.list()
+  })
+  ipcMain.handle(IPC.TOGGLE_TODO, async (_e, raw) => {
+    const id = validateTodoId(raw)
+    if (id) todoStore.toggleDone(id)
+    return todoStore.list()
+  })
+  ipcMain.handle(IPC.REMOVE_TODO, async (_e, raw) => {
+    const id = validateTodoId(raw)
+    if (id) todoStore.remove(id)
+    return todoStore.list()
+  })
+  ipcMain.on(IPC.OPEN_TODO_PANEL, () => todoWin.open())
+
   registerHotkeys(toggleDialog)
   tray = createTray(join(appRoot, 'resources/tray.png'), {
     onSettings: openSettings,
     onQuickAction: (id) => {
       if (!dialog.isOpen()) dialog.toggle(petBounds) // 没开先弹出,用户才看得到流式结果
       chat.runQuickAction(id)
-    }
+    },
+    onTodos: () => todoWin.open()
   })
+
+  scheduler.start()
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => unregisterHotkeys())
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop() })
 }
