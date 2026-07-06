@@ -1,0 +1,158 @@
+import type { ToolSpec } from './toolSpec'
+
+export interface GeoHit {
+  name: string
+  latitude: number
+  longitude: number
+  admin1?: string
+  country?: string
+}
+
+export interface CurrentWeather {
+  temperature: number
+  apparentTemperature: number
+  humidity: number
+  weatherCode: number
+  windSpeed: number
+}
+
+export interface DailyWeather {
+  date: string
+  weatherCode: number
+  tempMax: number
+  tempMin: number
+  precipProbability: number
+}
+
+export interface ForecastData {
+  current: CurrentWeather
+  daily: DailyWeather[]
+}
+
+// WMO weather code(0–99)→ 中文天气现象。天气码语义变动时此表是唯一改动点。
+const WMO_TEXT: Record<number, string> = {
+  0: '晴', 1: '大部晴朗', 2: '多云', 3: '阴',
+  45: '雾', 48: '雾凇',
+  51: '小毛毛雨', 53: '毛毛雨', 55: '大毛毛雨', 56: '冻毛毛雨', 57: '强冻毛毛雨',
+  61: '小雨', 63: '中雨', 65: '大雨', 66: '冻雨', 67: '强冻雨',
+  71: '小雪', 73: '中雪', 75: '大雪', 77: '米雪',
+  80: '小阵雨', 81: '阵雨', 82: '强阵雨', 85: '小阵雪', 86: '强阵雪',
+  95: '雷阵雨', 96: '雷阵雨伴冰雹', 99: '强雷阵雨伴冰雹'
+}
+
+export function wmoCodeText(code: number): string {
+  return WMO_TEXT[code] ?? `未知(code ${code})`
+}
+
+export function parseGeocoding(json: unknown): GeoHit[] {
+  const results = (json as { results?: unknown } | null)?.results
+  if (!Array.isArray(results)) return []
+  return results
+    .filter((r): r is Record<string, unknown> => typeof r === 'object' && r !== null)
+    .map((r) => ({
+      name: String(r.name ?? ''),
+      latitude: Number(r.latitude),
+      longitude: Number(r.longitude),
+      admin1: r.admin1 != null ? String(r.admin1) : undefined,
+      country: r.country != null ? String(r.country) : undefined
+    }))
+    .filter((h) => h.name !== '' && Number.isFinite(h.latitude) && Number.isFinite(h.longitude))
+}
+
+export function parseForecast(json: unknown): ForecastData {
+  const o = (json ?? {}) as { current?: Record<string, unknown>; daily?: Record<string, unknown> }
+  const cur = o.current ?? {}
+  const current: CurrentWeather = {
+    temperature: Number(cur.temperature_2m),
+    apparentTemperature: Number(cur.apparent_temperature),
+    humidity: Number(cur.relative_humidity_2m),
+    weatherCode: Number(cur.weather_code),
+    windSpeed: Number(cur.wind_speed_10m)
+  }
+  const d = o.daily ?? {}
+  const arr = (v: unknown): unknown[] => (Array.isArray(v) ? v : [])
+  const times = arr(d.time)
+  const codes = arr(d.weather_code)
+  const maxs = arr(d.temperature_2m_max)
+  const mins = arr(d.temperature_2m_min)
+  const pops = arr(d.precipitation_probability_max)
+  const daily: DailyWeather[] = times.map((t, i) => ({
+    date: String(t),
+    weatherCode: Number(codes[i]),
+    tempMax: Number(maxs[i]),
+    tempMin: Number(mins[i]),
+    precipProbability: Number(pops[i])
+  }))
+  return { current, daily }
+}
+
+export function formatWeather(loc: GeoHit, data: ForecastData): string {
+  const place = [loc.name, loc.admin1, loc.country].filter((s) => s && s.length > 0).join('·')
+  const c = data.current
+  const head =
+    `${place} 天气\n\n` +
+    `当前:${wmoCodeText(c.weatherCode)} ${c.temperature}°C(体感 ${c.apparentTemperature}°C) ` +
+    `湿度 ${c.humidity}% 风速 ${c.windSpeed} km/h`
+  const rows = data.daily.slice(1, 4).map((d) =>
+    `${d.date.slice(5)} ${wmoCodeText(d.weatherCode)} ${d.tempMin}~${d.tempMax}°C 降水概率 ${d.precipProbability}%`
+  )
+  return `${head}\n\n未来3天:\n${rows.join('\n')}`
+}
+
+const GEO_ENDPOINT = 'https://geocoding-api.open-meteo.com/v1/search'
+const FORECAST_ENDPOINT = 'https://api.open-meteo.com/v1/forecast'
+
+export interface WeatherResult {
+  loc: GeoHit
+  data: ForecastData
+}
+
+export interface WeatherClient {
+  getWeather(location: string, signal: AbortSignal): Promise<WeatherResult | null>
+}
+
+export function createOpenMeteoClient(fetchFn: typeof fetch = fetch): WeatherClient {
+  return {
+    async getWeather(location, signal) {
+      const geoUrl =
+        `${GEO_ENDPOINT}?name=${encodeURIComponent(location)}&count=1&language=zh&format=json`
+      const geoRes = await fetchFn(geoUrl, { signal })
+      if (!geoRes.ok) throw new Error(`天气地点查询失败(HTTP ${geoRes.status})`)
+      const hits = parseGeocoding(await geoRes.json())
+      if (hits.length === 0) return null
+      const loc = hits[0]
+      const forecastUrl =
+        `${FORECAST_ENDPOINT}?latitude=${loc.latitude}&longitude=${loc.longitude}` +
+        `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m` +
+        `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+        `&timezone=auto&forecast_days=4`
+      const fRes = await fetchFn(forecastUrl, { signal })
+      if (!fRes.ok) throw new Error(`天气预报查询失败(HTTP ${fRes.status})`)
+      const data = parseForecast(await fRes.json())
+      return { loc, data }
+    }
+  }
+}
+
+export function createWeatherTool(client: WeatherClient): ToolSpec {
+  return {
+    name: 'weather',
+    description:
+      '查询某个城市/地点的天气(当前实况 + 未来3天预报)。当用户问天气、气温、会不会下雨这类问题时调用。' +
+      'location 必填;若用户没说是哪个城市,先反问用户在哪个城市,不要瞎猜。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string', description: '城市或地点名,如「北京」「上海浦东」' }
+      },
+      required: ['location']
+    },
+    async run(input, ctx) {
+      const { location } = input as { location: string }
+      ctx.onStatus?.(`正在查询天气:${location}`)
+      const result = await client.getWeather(location, ctx.signal)
+      if (!result) return `没找到「${location}」这个地方,请确认地名或换个说法。`
+      return formatWeather(result.loc, result.data)
+    }
+  }
+}
