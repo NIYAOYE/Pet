@@ -59,6 +59,8 @@ Do NOT generate polished illustration, painterly rendering, anime key art, 3D re
 
 Pet rows are processed into transparent 192x208 cells, so every generated pixel must either belong to the pet sprite or be cleanly removable chroma-key background. Prefer pose, expression, and silhouette changes over decorative effects.
 
+Finalization performs soft-matte chroma removal and key-color despill in `extract_strip_frames.py`; do not replace it with a hard RGB cutoff. Antialiased edge pixels blended with the chroma key must receive partial alpha and have key-channel contamination removed. `inspect_frames.py` treats more than 10 non-transparent near-key pixels in any frame as a blocking error. If this check fails, fix the cleanup or regenerate the affected row; never accept a visible green/magenta fringe merely because atlas geometry passes.
+
 Allowed effects must satisfy all of these: state-relevant; physically attached to / touching / overlapping the pet silhouette (not floating); inside the same frame slot; opaque, hard-edged, pixel-style, using non-chroma-key colors; small enough to read at 192x208. Examples: a tear touching the face (`cry`), a heart overlapping the pet (`love`).
 
 Avoid by default (these break transparent-background cleanup): wave marks, motion arcs, speed lines, action streaks, afterimages, blur, smears; detached stars/sparkles/punctuation/icons, falling tear drops, separated smoke, loose dust; cast/contact/drop/oval shadows, floor patches, landing marks, impact bursts, glow, halo-as-effect, aura; text, labels, frame numbers, grids, guide marks, speech/thought bubbles, UI panels, scenery, checkerboard transparency, white/black backgrounds; chroma-key-adjacent colors anywhere on the pet; stray pixels, disconnected outline bits, speckle, cropped body parts, slot-crossing poses.
@@ -147,7 +149,7 @@ pets/<pet-id>/
   spritesheet.webp
 ```
 
-Review `qa/contact-sheet.png`, `qa/review.json`, `final/validation.json`, and `qa/videos/` before accepting. Deterministic validation is necessary but not sufficient: visually inspect the contact sheet for identity consistency and block acceptance if any row changes face, markings, palette, prop design, or silhouette.
+Review `qa/contact-sheet.png`, `qa/review.json`, `final/validation.json`, and `qa/videos/` before accepting. Deterministic validation is necessary but not sufficient: visually inspect the contact sheet over both light and dark backgrounds for identity consistency and chroma fringe; block acceptance if any row changes face, markings, palette, prop design, silhouette, or retains key-colored edge spill.
 
 ## Subagent Row Generation
 
@@ -199,6 +201,7 @@ python "$SKILL_DIR/scripts/generate_pet_images.py" \
 - Keep silhouette, face, materials, palette, and props consistent across all rows.
 - Treat visual identity drift as a blocker even when `qa/review.json` and `final/validation.json` pass.
 - Treat forbidden detached effects, chroma-key-adjacent artifacts, shadows, glows, smears, dust, or motion trails as failed rows.
+- Keep the built-in soft matte + despill cleanup enabled. Do not raise the near-key pixel threshold to hide fringe failures.
 - Treat `qa/review.json` errors as blockers; warnings require visual review.
 
 ## Acceptance Criteria
@@ -208,5 +211,6 @@ python "$SKILL_DIR/scripts/generate_pet_images.py" \
 - Atlas follows the row/frame counts in `scripts/pet_layout.py` / [references/animation-rows.md](references/animation-rows.md).
 - Contact sheet and preview videos produced unless explicitly skipped.
 - `qa/review.json` has no errors.
+- Every frame has at most 10 non-transparent pixels within the configured near-key color distance, and no visible key-colored fringe on light or dark backgrounds.
 - Row-by-row review confirms the animation cycles are complete and identity-consistent.
 - `pets/<pet-id>/pet.json` (with `sheet` + `animations` blocks) and `pets/<pet-id>/spritesheet.webp` are saved together.

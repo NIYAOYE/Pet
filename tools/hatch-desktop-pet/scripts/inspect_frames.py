@@ -197,7 +197,7 @@ def main() -> None:
     parser.add_argument("--edge-margin", type=int, default=2)
     parser.add_argument("--edge-pixel-threshold", type=int, default=24)
     parser.add_argument("--chroma-adjacent-threshold", type=float, default=150.0)
-    parser.add_argument("--chroma-adjacent-pixel-threshold", type=int, default=800)
+    parser.add_argument("--chroma-adjacent-pixel-threshold", type=int, default=10)
     parser.add_argument("--small-outlier-ratio", type=float, default=0.35)
     parser.add_argument("--large-outlier-ratio", type=float, default=2.75)
     parser.add_argument(

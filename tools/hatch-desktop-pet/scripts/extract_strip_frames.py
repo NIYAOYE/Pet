@@ -51,6 +51,50 @@ def color_distance(
     return math.sqrt((red - key[0]) ** 2 + (green - key[1]) ** 2 + (blue - key[2]) ** 2)
 
 
+def smoothstep(value: float) -> float:
+    value = max(0.0, min(1.0, value))
+    return value * value * (3.0 - 2.0 * value)
+
+
+def spill_channels(chroma_key: tuple[int, int, int]) -> list[int]:
+    key_max = max(chroma_key)
+    if key_max < 128:
+        return []
+    return [
+        index
+        for index, value in enumerate(chroma_key)
+        if value >= key_max - 16 and value >= 128
+    ]
+
+
+def key_channel_dominance(
+    rgb: tuple[int, int, int],
+    chroma_key: tuple[int, int, int],
+) -> float:
+    spill = spill_channels(chroma_key)
+    if not spill:
+        return 0.0
+    non_spill = [index for index in range(3) if index not in spill]
+    key_strength = min(rgb[index] for index in spill)
+    non_key_strength = max((rgb[index] for index in non_spill), default=0)
+    return float(key_strength - non_key_strength)
+
+
+def despill_color(
+    rgb: tuple[int, int, int],
+    chroma_key: tuple[int, int, int],
+) -> tuple[int, int, int]:
+    channels = list(rgb)
+    spill = spill_channels(chroma_key)
+    non_spill = [index for index in range(3) if index not in spill]
+    if not spill or not non_spill:
+        return rgb
+    cap = max(0, max(channels[index] for index in non_spill) - 1)
+    for index in spill:
+        channels[index] = min(channels[index], cap)
+    return tuple(channels)
+
+
 def remove_chroma_background(
     image: Image.Image,
     chroma_key: tuple[int, int, int],
@@ -58,11 +102,38 @@ def remove_chroma_background(
 ) -> Image.Image:
     rgba = image.convert("RGBA")
     pixels = rgba.load()
+    opaque_threshold = min(math.sqrt(3 * 255**2), threshold + 124.0)
     for y in range(rgba.height):
         for x in range(rgba.width):
             red, green, blue, alpha = pixels[x, y]
-            if color_distance(red, green, blue, chroma_key) <= threshold:
-                pixels[x, y] = (red, green, blue, 0)
+            rgb = (red, green, blue)
+            distance = color_distance(red, green, blue, chroma_key)
+            dominance = key_channel_dominance(rgb, chroma_key)
+            key_like = distance <= 32.0 or dominance >= 8.0
+            if not key_like:
+                continue
+            if distance <= threshold:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+            if distance >= opaque_threshold:
+                continue
+
+            distance_ratio = (distance - threshold) / (opaque_threshold - threshold)
+            matte_alpha = round(255.0 * smoothstep(distance_ratio))
+            non_key_strength = max(
+                (rgb[index] for index in range(3) if index not in spill_channels(chroma_key)),
+                default=0,
+            )
+            dominance_alpha = round(
+                255.0
+                * (1.0 - min(1.0, dominance / max(1.0, max(chroma_key) - non_key_strength)))
+            )
+            output_alpha = round(min(matte_alpha, dominance_alpha) * (alpha / 255.0))
+            if output_alpha <= 8:
+                pixels[x, y] = (0, 0, 0, 0)
+                continue
+            clean_red, clean_green, clean_blue = despill_color(rgb, chroma_key)
+            pixels[x, y] = (clean_red, clean_green, clean_blue, output_alpha)
     return rgba
 
 
