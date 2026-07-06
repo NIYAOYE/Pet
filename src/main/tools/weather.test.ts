@@ -4,6 +4,7 @@ import {
   parseGeocoding,
   parseForecast,
   formatWeather,
+  createOpenMeteoClient,
   type GeoHit,
   type ForecastData
 } from './weather'
@@ -92,5 +93,61 @@ describe('formatWeather', () => {
     expect(text).toContain('07-07 中雨 21~28°C 降水概率 80%')
     expect(text).toContain('07-09 晴 24~33°C 降水概率 0%')
     expect(text).not.toContain('07-06')
+  })
+})
+
+describe('createOpenMeteoClient', () => {
+  const signal = new AbortController().signal
+  // 按 URL 路由的假 fetch:含 'geocoding' 走地理编码,否则走预报
+  const routed = (geo: unknown, forecast: unknown, geoStatus = 200, fStatus = 200): typeof fetch =>
+    (async (url: string | URL | Request) => {
+      const u = String(url)
+      if (u.includes('geocoding')) return new Response(JSON.stringify(geo), { status: geoStatus })
+      return new Response(JSON.stringify(forecast), { status: fStatus })
+    }) as typeof fetch
+
+  it('happy-path:地理编码 URL 带 name/language/count,预报 URL 带经纬度与 forecast_days=4,返回 loc+data', async () => {
+    const urls: string[] = []
+    const fetchFn: typeof fetch = (async (url: string | URL | Request) => {
+      const u = String(url)
+      urls.push(u)
+      if (u.includes('geocoding')) return new Response(JSON.stringify(geoJson), { status: 200 })
+      return new Response(JSON.stringify(forecastJson), { status: 200 })
+    }) as typeof fetch
+    const res = await createOpenMeteoClient(fetchFn).getWeather('北京', signal)
+    expect(res).not.toBeNull()
+    expect(res!.loc.name).toBe('北京')
+    expect(res!.data.daily).toHaveLength(4)
+    expect(urls[0]).toContain('geocoding-api.open-meteo.com/v1/search')
+    expect(urls[0]).toContain('name=%E5%8C%97%E4%BA%AC') // encodeURIComponent('北京')
+    expect(urls[0]).toContain('language=zh')
+    expect(urls[0]).toContain('count=1')
+    expect(urls[1]).toContain('api.open-meteo.com/v1/forecast')
+    expect(urls[1]).toContain('latitude=39.9075')
+    expect(urls[1]).toContain('longitude=116.39723')
+    expect(urls[1]).toContain('forecast_days=4')
+  })
+
+  it('地名无命中返回 null(不请求预报)', async () => {
+    let forecastCalled = false
+    const fetchFn: typeof fetch = (async (url: string | URL | Request) => {
+      const u = String(url)
+      if (u.includes('geocoding')) return new Response(JSON.stringify(geoEmptyJson), { status: 200 })
+      forecastCalled = true
+      return new Response(JSON.stringify(forecastJson), { status: 200 })
+    }) as typeof fetch
+    const res = await createOpenMeteoClient(fetchFn).getWeather('不存在的地方xyz', signal)
+    expect(res).toBeNull()
+    expect(forecastCalled).toBe(false)
+  })
+
+  it('地理编码 HTTP 非 2xx 抛人话错误', async () => {
+    await expect(createOpenMeteoClient(routed(geoJson, forecastJson, 500)).getWeather('北京', signal))
+      .rejects.toThrow(/500/)
+  })
+
+  it('预报 HTTP 非 2xx 抛人话错误', async () => {
+    await expect(createOpenMeteoClient(routed(geoJson, forecastJson, 200, 503)).getWeather('北京', signal))
+      .rejects.toThrow(/503/)
   })
 })

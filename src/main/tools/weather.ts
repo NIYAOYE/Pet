@@ -96,3 +96,38 @@ export function formatWeather(loc: GeoHit, data: ForecastData): string {
   )
   return `${head}\n\n未来3天:\n${rows.join('\n')}`
 }
+
+const GEO_ENDPOINT = 'https://geocoding-api.open-meteo.com/v1/search'
+const FORECAST_ENDPOINT = 'https://api.open-meteo.com/v1/forecast'
+
+export interface WeatherResult {
+  loc: GeoHit
+  data: ForecastData
+}
+
+export interface WeatherClient {
+  getWeather(location: string, signal: AbortSignal): Promise<WeatherResult | null>
+}
+
+export function createOpenMeteoClient(fetchFn: typeof fetch = fetch): WeatherClient {
+  return {
+    async getWeather(location, signal) {
+      const geoUrl =
+        `${GEO_ENDPOINT}?name=${encodeURIComponent(location)}&count=1&language=zh&format=json`
+      const geoRes = await fetchFn(geoUrl, { signal })
+      if (!geoRes.ok) throw new Error(`天气地点查询失败(HTTP ${geoRes.status})`)
+      const hits = parseGeocoding(await geoRes.json())
+      if (hits.length === 0) return null
+      const loc = hits[0]
+      const forecastUrl =
+        `${FORECAST_ENDPOINT}?latitude=${loc.latitude}&longitude=${loc.longitude}` +
+        `&current=temperature_2m,apparent_temperature,relative_humidity_2m,weather_code,wind_speed_10m` +
+        `&daily=weather_code,temperature_2m_max,temperature_2m_min,precipitation_probability_max` +
+        `&timezone=auto&forecast_days=4`
+      const fRes = await fetchFn(forecastUrl, { signal })
+      if (!fRes.ok) throw new Error(`天气预报查询失败(HTTP ${fRes.status})`)
+      const data = parseForecast(await fRes.json())
+      return { loc, data }
+    }
+  }
+}
