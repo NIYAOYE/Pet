@@ -1,3 +1,5 @@
+import type { ToolSpec } from './toolSpec'
+
 export interface GeoHit {
   name: string
   latitude: number
@@ -128,6 +130,29 @@ export function createOpenMeteoClient(fetchFn: typeof fetch = fetch): WeatherCli
       if (!fRes.ok) throw new Error(`天气预报查询失败(HTTP ${fRes.status})`)
       const data = parseForecast(await fRes.json())
       return { loc, data }
+    }
+  }
+}
+
+export function createWeatherTool(client: WeatherClient): ToolSpec {
+  return {
+    name: 'weather',
+    description:
+      '查询某个城市/地点的天气(当前实况 + 未来3天预报)。当用户问天气、气温、会不会下雨这类问题时调用。' +
+      'location 必填;若用户没说是哪个城市,先反问用户在哪个城市,不要瞎猜。',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        location: { type: 'string', description: '城市或地点名,如「北京」「上海浦东」' }
+      },
+      required: ['location']
+    },
+    async run(input, ctx) {
+      const { location } = input as { location: string }
+      ctx.onStatus?.(`正在查询天气:${location}`)
+      const result = await client.getWeather(location, ctx.signal)
+      if (!result) return `没找到「${location}」这个地方,请确认地名或换个说法。`
+      return formatWeather(result.loc, result.data)
     }
   }
 }

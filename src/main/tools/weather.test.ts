@@ -5,8 +5,10 @@ import {
   parseForecast,
   formatWeather,
   createOpenMeteoClient,
+  createWeatherTool,
   type GeoHit,
-  type ForecastData
+  type ForecastData,
+  type WeatherClient
 } from './weather'
 
 // Open-Meteo 地理编码响应样本(/v1/search?name=北京&count=1&language=zh)
@@ -149,5 +151,38 @@ describe('createOpenMeteoClient', () => {
   it('预报 HTTP 非 2xx 抛人话错误', async () => {
     await expect(createOpenMeteoClient(routed(geoJson, forecastJson, 200, 503)).getWeather('北京', signal))
       .rejects.toThrow(/503/)
+  })
+})
+
+describe('createWeatherTool', () => {
+  const ctx = { signal: new AbortController().signal }
+  const loc = geoJson.results[0]
+  const okClient: WeatherClient = { async getWeather() { return { loc, data: parseForecast(forecastJson) } } }
+
+  it('声明:名字 weather,location 必填', () => {
+    const tool = createWeatherTool(okClient)
+    expect(tool.name).toBe('weather')
+    expect(tool.inputSchema.required as string[]).toContain('location')
+  })
+
+  it('执行:先 onStatus 播报,返回格式化天气', async () => {
+    const statuses: string[] = []
+    const tool = createWeatherTool(okClient)
+    const out = await tool.run({ location: '北京' }, { ...ctx, onStatus: (t) => statuses.push(t) })
+    expect(statuses).toEqual(['正在查询天气:北京'])
+    expect(out).toContain('北京·北京市·中国')
+    expect(out).toContain('未来3天')
+  })
+
+  it('地名无命中(client 返回 null)→ 友好文案,不抛', async () => {
+    const tool = createWeatherTool({ async getWeather() { return null } })
+    const out = await tool.run({ location: '火星城' }, ctx)
+    expect(out).toContain('没找到')
+    expect(out).toContain('火星城')
+  })
+
+  it('client 抛错原样冒泡(由 registry 转 isError)', async () => {
+    const tool = createWeatherTool({ async getWeather() { throw new Error('网络挂了') } })
+    await expect(tool.run({ location: '北京' }, ctx)).rejects.toThrow('网络挂了')
   })
 })
