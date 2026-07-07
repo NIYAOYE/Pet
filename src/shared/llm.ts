@@ -37,9 +37,11 @@ export interface MemorySettings { embedding: EmbeddingSettings | null }
 
 export interface TextToolsSettings { autoCopyResult: boolean }
 
-export const SETTINGS_SCHEMA_VERSION = 5
+export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings }
+export const SETTINGS_SCHEMA_VERSION = 6
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -47,7 +49,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
-  textTools: { autoCopyResult: false }
+  textTools: { autoCopyResult: false },
+  firecrawl: { enabled: false }
 }
 
 export interface Preset {

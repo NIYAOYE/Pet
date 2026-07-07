@@ -79,6 +79,7 @@ export function startShell(): void {
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
   const embeddingSecrets = createSecretStore(join(userData, 'secrets-embedding.bin'), safeStorage)
+  const firecrawlSecrets = createSecretStore(join(userData, 'secrets-firecrawl.bin'), safeStorage)
 
   const petWin = createPetWindow({ preload, url: rendererUrl, indexHtml: petHtml })
 
@@ -129,6 +130,7 @@ export function startShell(): void {
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
+    getFirecrawlKey: () => firecrawlSecrets.getKey(),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
@@ -269,7 +271,8 @@ export function startShell(): void {
     settings: loadSettings(settingsFile),
     hasKey: secrets.hasKey(),
     hasSearchKey: searchSecrets.hasKey(),
-    hasEmbeddingKey: embeddingSecrets.hasKey()
+    hasEmbeddingKey: embeddingSecrets.hasKey(),
+    hasFirecrawlKey: firecrawlSecrets.hasKey()
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => { saveSettings(settingsFile, normalizeSettings(raw)) })
   ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
@@ -280,6 +283,9 @@ export function startShell(): void {
   })
   ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, raw): Promise<boolean> => {
     const key = validateKey(raw); return key === null ? false : embeddingSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_FIRECRAWL_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : firecrawlSecrets.setKey(key)
   })
   ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
     mkdirSync(memoryDir, { recursive: true })

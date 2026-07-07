@@ -13,6 +13,11 @@ const embBaseURL = $<HTMLInputElement>('embBaseURL')
 const embModel = $<HTMLInputElement>('embModel')
 const embKey = $<HTMLInputElement>('embKey')
 const autoCopyResult = $<HTMLInputElement>('autoCopyResult')
+const firecrawlEnabled = $<HTMLInputElement>('firecrawlEnabled')
+const firecrawlKey = $<HTMLInputElement>('firecrawlKey')
+const firecrawlBaseURL = $<HTMLInputElement>('firecrawlBaseURL')
+const firecrawlKeyRow = $<HTMLElement>('firecrawlKeyRow')
+const firecrawlBaseRow = $<HTMLElement>('firecrawlBaseRow')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
@@ -61,6 +66,12 @@ preset.addEventListener('change', () => applyPreset(preset.value))
 searchBackend.addEventListener('change', () => {
   searchKeyRow.style.display = searchBackend.value === 'tavily' ? '' : 'none'
 })
+function syncFirecrawlRows(): void {
+  const show = firecrawlEnabled.checked ? '' : 'none'
+  firecrawlKeyRow.style.display = show
+  firecrawlBaseRow.style.display = show
+}
+firecrawlEnabled.addEventListener('change', syncFirecrawlRows)
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
 async function refreshPets(selectId: string): Promise<void> {
@@ -119,6 +130,10 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       const ok = await window.settingsApi.setEmbeddingKey(embKey.value)
       if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Embedding Key'; return }
     }
+    if (firecrawlEnabled.checked && firecrawlKey.value) {
+      const ok = await window.settingsApi.setFirecrawlKey(firecrawlKey.value)
+      if (!ok) { status.textContent = '✗ 当前系统不支持安全存储,无法保存 Firecrawl Key'; return }
+    }
     const embedding =
       embBaseURL.value.trim() && embModel.value.trim()
         ? { baseURL: embBaseURL.value.trim(), model: embModel.value.trim() }
@@ -129,7 +144,11 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
       memory: { embedding },
-      textTools: { autoCopyResult: autoCopyResult.checked }
+      textTools: { autoCopyResult: autoCopyResult.checked },
+      firecrawl: {
+        enabled: firecrawlEnabled.checked,
+        baseURL: firecrawlBaseURL.value.trim() || undefined
+      }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -161,6 +180,10 @@ void (async () => {
   }
   if (snap.hasEmbeddingKey) embKey.placeholder = '(已配置,如需更换请重新填写)'
   autoCopyResult.checked = snap.settings.textTools.autoCopyResult
+  firecrawlEnabled.checked = snap.settings.firecrawl.enabled
+  if (snap.settings.firecrawl.baseURL) firecrawlBaseURL.value = snap.settings.firecrawl.baseURL
+  if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
+  syncFirecrawlRows()
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
 })()

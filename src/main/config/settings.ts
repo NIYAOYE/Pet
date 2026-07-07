@@ -29,13 +29,19 @@ export function normalizeSettings(raw: unknown): AppSettings {
       : null
   const tt = (r.textTools ?? {}) as Record<string, unknown>
   const autoCopyResult = tt.autoCopyResult === true
+  const fc = (r.firecrawl ?? {}) as Record<string, unknown>
+  const firecrawl = {
+    enabled: fc.enabled === true,
+    baseURL: typeof fc.baseURL === 'string' && fc.baseURL.trim().length > 0 ? fc.baseURL.trim() : undefined
+  }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     activePetId: normalizePetId(r.activePetId),
     provider: { kind, model, baseURL },
     search: { backend },
     memory: { embedding },
-    textTools: { autoCopyResult }
+    textTools: { autoCopyResult },
+    firecrawl
   }
 }
 
