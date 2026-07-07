@@ -3,7 +3,8 @@ import {
   IPC, type PetApi, type ChatApi, type LoadedPet, type MoveDelta,
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
-  type OverlayInit, type OverlayRect, type TodoApi, type TodoItem
+  type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
+  type BubbleApi, type BubblePlace
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -92,9 +93,37 @@ const todoApi: TodoApi = {
   openPanel: (): void => ipcRenderer.send(IPC.OPEN_TODO_PANEL)
 }
 
+const bubbleApi: BubbleApi = {
+  onStream: (cb: (text: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_STREAM)
+    ipcRenderer.on(IPC.BUBBLE_STREAM, (_e, text: string) => cb(text))
+  },
+  onStatus: (cb: (text: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_STATUS)
+    ipcRenderer.on(IPC.BUBBLE_STATUS, (_e, text: string) => cb(text))
+  },
+  onDone: (cb: () => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_DONE)
+    ipcRenderer.on(IPC.BUBBLE_DONE, () => cb())
+  },
+  onError: (cb: (message: string) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_ERROR)
+    ipcRenderer.on(IPC.BUBBLE_ERROR, (_e, message: string) => cb(message))
+  },
+  onClear: (cb: () => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_CLEAR)
+    ipcRenderer.on(IPC.BUBBLE_CLEAR, () => cb())
+  },
+  onPlace: (cb: (p: BubblePlace) => void): void => {
+    ipcRenderer.removeAllListeners(IPC.BUBBLE_PLACE)
+    ipcRenderer.on(IPC.BUBBLE_PLACE, (_e, p: BubblePlace) => cb(p))
+  }
+}
+
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
 contextBridge.exposeInMainWorld('mediaApi', mediaApi)
 contextBridge.exposeInMainWorld('overlayApi', overlayApi)
 contextBridge.exposeInMainWorld('todoApi', todoApi)
+contextBridge.exposeInMainWorld('bubbleApi', bubbleApi)

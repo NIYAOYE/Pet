@@ -1,12 +1,9 @@
 import type { ChatMessage, ChatSendAttachment } from '@shared/ipc'
 import { renderMarkdownSafe } from './markdown'
 
-const BUBBLE_MS = 4000
-
 const panel = document.getElementById('panel') as HTMLElement
-const bubble = document.getElementById('bubble') as HTMLElement
 const history = document.getElementById('history') as HTMLElement
-const input = document.getElementById('input') as HTMLInputElement
+const input = document.getElementById('input') as HTMLTextAreaElement
 const toggleBtn = document.getElementById('toggle') as HTMLButtonElement
 const sendBtn = document.getElementById('send') as HTMLButtonElement
 const pickBtn = document.getElementById('pick') as HTMLButtonElement
@@ -62,20 +59,12 @@ async function addFiles(files: Iterable<File>): Promise<void> {
 }
 
 let collapsed = true
-let bubbleTimer: number | null = null
 let streaming = '' // 进行中的 pet 回复(逐字累积)
 let statusEl: HTMLElement | null = null
 
 function clearStatus(): void {
   document.getElementById('status-msg')?.remove()
   statusEl = null
-}
-
-function showBubble(text: string): void {
-  bubble.textContent = text
-  bubble.classList.add('show')
-  if (bubbleTimer !== null) clearTimeout(bubbleTimer)
-  bubbleTimer = window.setTimeout(() => bubble.classList.remove('show'), BUBBLE_MS)
 }
 
 function renderStreaming(): void {
@@ -116,8 +105,6 @@ function render(messages: ChatMessage[]): void {
     history.appendChild(el)
   }
   history.scrollTop = history.scrollHeight
-  const lastPet = [...messages].reverse().find((m) => m.role === 'pet')
-  if (lastPet) showBubble(lastPet.text)
 }
 
 function setCollapsed(c: boolean): void {
@@ -127,9 +114,6 @@ function setCollapsed(c: boolean): void {
   toggleBtn.textContent = c ? '⤢' : '⤡'
   toggleBtn.title = c ? '展开' : '收起'
   window.chatApi.setSize(c)
-  // Returning to collapsed: re-show the last reply bubble (its fade timer may have
-  // elapsed while expanded/hidden), so the thin bar shows the latest reply again.
-  if (c && bubble.textContent) showBubble(bubble.textContent)
 }
 
 function submit(): void {
@@ -141,18 +125,24 @@ function submit(): void {
   streaming = ''
   document.getElementById('streaming-msg')?.remove()
   clearStatus()
-  if (bubbleTimer !== null) { clearTimeout(bubbleTimer); bubbleTimer = null }
-  bubble.classList.remove('show')
-  bubble.textContent = ''
   window.chatApi.send({ text, attachments: pending.length ? pending : undefined })
   input.value = ''
+  input.style.height = 'auto'
   pending = []
   renderPending()
 }
 
 toggleBtn.addEventListener('click', () => setCollapsed(!collapsed))
 sendBtn.addEventListener('click', submit)
-input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit() })
+input.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit() }
+  // Shift+Enter / 输入法组合中 → 走默认,插入换行
+})
+// textarea 随内容自增高(上限由 CSS max-height 接管,超出内部滚动)
+input.addEventListener('input', () => {
+  input.style.height = 'auto'
+  input.style.height = `${input.scrollHeight}px`
+})
 pickBtn.addEventListener('click', async () => {
   const atts = await window.mediaApi.pickImage()
   if (atts.length) addPending(atts)
@@ -177,14 +167,12 @@ window.chatApi.onUpdate(render)
 window.chatApi.onStream((text) => {
   clearStatus()
   streaming += text
-  showBubble(streaming)
   renderStreaming()
 })
 window.chatApi.onDone(() => { streaming = '' })
 window.chatApi.onError((message) => {
   clearStatus()
   streaming = ''
-  showBubble(`⚠ ${message}`)
   const el = document.createElement('div')
   el.className = 'msg pet'
   el.textContent = `⚠ ${message}`
@@ -192,7 +180,6 @@ window.chatApi.onError((message) => {
   history.scrollTop = history.scrollHeight
 })
 window.chatApi.onStatus((text) => {
-  showBubble(`🔍 ${text}`)
   if (!statusEl) {
     statusEl = document.createElement('div')
     statusEl.id = 'status-msg'

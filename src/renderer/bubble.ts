@@ -1,0 +1,47 @@
+import { renderMarkdownSafe } from './markdown'
+
+const box = document.getElementById('box') as HTMLElement
+const tail = document.getElementById('tail') as HTMLElement
+
+let streaming = '' // 流式累积的纯文本
+
+function clear(): void {
+  streaming = ''
+  box.textContent = ''
+  box.classList.remove('status')
+}
+
+// 打开外部链接由主进程 will-navigate/openExternal 兜底,这里无需处理。
+window.bubbleApi.onClear(() => clear())
+
+window.bubbleApi.onStream((text) => {
+  box.classList.remove('status')
+  streaming += text
+  box.textContent = streaming            // 流式期间纯文本,避免半截标签闪烁
+  box.scrollTop = box.scrollHeight
+})
+
+window.bubbleApi.onStatus((text) => {
+  // 状态行(检索中等)不并入回复累积;有回复文本时忽略状态,免得盖掉正文
+  if (streaming) return
+  box.classList.add('status')
+  box.textContent = `🔍 ${text}`
+})
+
+window.bubbleApi.onDone(() => {
+  // 完成:把累积纯文本定格为安全 Markdown 子集
+  if (streaming) box.innerHTML = renderMarkdownSafe(streaming)
+  box.scrollTop = box.scrollHeight
+})
+
+window.bubbleApi.onError((message) => {
+  streaming = ''
+  box.classList.remove('status')
+  box.textContent = `⚠ ${message}`
+})
+
+window.bubbleApi.onPlace((p) => {
+  document.body.classList.toggle('tail-bottom', p.tailSide === 'bottom')
+  document.body.classList.toggle('tail-top', p.tailSide === 'top')
+  tail.style.setProperty('--tail-x', `${p.tailOffsetX}px`)
+})

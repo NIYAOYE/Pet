@@ -21,7 +21,8 @@ export default defineConfig({
           dialog: resolve('src/renderer/dialog.html'),
           settings: resolve('src/renderer/settings.html'),
           overlay: resolve('src/renderer/regionOverlay.html'),
-          todoPanel: resolve('src/renderer/todoPanel.html')
+          todoPanel: resolve('src/renderer/todoPanel.html'),
+          bubble: resolve('src/renderer/bubble.html')
         }
       }
     },
