@@ -8,12 +8,13 @@ import {
   type SettingsSnapshot,
   type TestResult
 } from '@shared/ipc'
-import type { PetEvent } from '@shared/petBrain'
+import type { PetEvent, Bounds } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow } from './petWindow'
 import { createTray } from './tray'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
+import { createBubbleController } from './bubbleWindow'
 import { createTodoWindow } from './todoWindow'
 import { createChatStore } from './chat'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
@@ -48,6 +49,7 @@ export function startShell(): void {
   const rendererUrl = process.env['ELECTRON_RENDERER_URL']
   const petHtml = join(dirname, '../renderer/index.html')
   const dialogHtml = join(dirname, '../renderer/dialog.html')
+  const bubbleHtml = join(dirname, '../renderer/bubble.html')
   const overlayHtml = join(dirname, '../renderer/regionOverlay.html')
   const overlayUrl = rendererUrl ? `${rendererUrl}/regionOverlay.html` : undefined
   const userData = app.getPath('userData')
@@ -83,8 +85,32 @@ export function startShell(): void {
 
   const petWin = createPetWindow({ preload, url: rendererUrl, indexHtml: petHtml })
 
+  const bubble = createBubbleController({
+    preload,
+    url: rendererUrl ? `${rendererUrl}/bubble.html` : undefined,
+    bubbleHtml
+  })
+  let dialogCollapsed = true   // 镜像对话框折叠态,决定气泡显隐
+  let bubbleHasContent = false // 本轮是否已有可显示的回复/状态
+
+  function petBoundsFull(): Bounds {
+    const [x, y] = petWin.getPosition()
+    const [width, height] = petWin.getSize()
+    return { x, y, width, height }
+  }
+  function petWorkArea(): Bounds {
+    const b = petBoundsFull()
+    return screen.getDisplayMatching(b).workArea
+  }
+  function refreshBubble(): void {
+    if (dialog.isOpen() && dialogCollapsed && bubbleHasContent) bubble.show(petBoundsFull(), petWorkArea())
+    else bubble.hide()
+  }
+
   function emitPetEvent(event: PetEvent): void {
     petWin.webContents.send(IPC.PET_EVENT, event)
+    // 送出瞬间保证界面干净:清掉本轮气泡内容并隐藏,待首个流式/状态到达再显示
+    if (event === 'messageSent') { bubbleHasContent = false; bubble.clear(); bubble.hide() }
   }
 
   const dialog = createDialogController({
@@ -94,8 +120,14 @@ export function startShell(): void {
     onOpened: () => {
       emitPetEvent('dialogOpen')
       dialog.pushUpdate(chat.messages())
+      refreshBubble() // 折叠态打开:此刻无本轮内容 → 保持隐藏(界面干净)
     },
-    onClosed: () => emitPetEvent('dialogClose')
+    onClosed: () => {
+      emitPetEvent('dialogClose')
+      bubbleHasContent = false
+      bubble.clear()
+      bubble.hide()
+    }
   })
 
   // 产品运行时技能:仓库根 skills/(打包后随 resources 分发,MVP-06 处理拷贝)
@@ -135,10 +167,22 @@ export function startShell(): void {
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
     pushUpdate: (msgs) => dialog.pushUpdate(msgs),
-    pushStream: (t) => dialog.window()?.webContents.send(IPC.CHAT_STREAM, t),
-    pushStatus: (t) => dialog.window()?.webContents.send(IPC.CHAT_STATUS, t),
-    pushDone: () => dialog.window()?.webContents.send(IPC.CHAT_DONE),
-    pushError: (m) => dialog.window()?.webContents.send(IPC.CHAT_ERROR, m),
+    pushStream: (t) => {
+      dialog.window()?.webContents.send(IPC.CHAT_STREAM, t)
+      bubbleHasContent = true; refreshBubble(); bubble.pushStream(t)
+    },
+    pushStatus: (t) => {
+      dialog.window()?.webContents.send(IPC.CHAT_STATUS, t)
+      bubbleHasContent = true; refreshBubble(); bubble.pushStatus(t)
+    },
+    pushDone: () => {
+      dialog.window()?.webContents.send(IPC.CHAT_DONE)
+      bubble.pushDone()
+    },
+    pushError: (m) => {
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, m)
+      bubbleHasContent = true; refreshBubble(); bubble.pushError(m)
+    },
     openSettings: () => openSettings()
   })
 
@@ -219,6 +263,7 @@ export function startShell(): void {
     } else {
       petWin.setPosition(nx, ny)
     }
+    if (bubble.isVisible()) bubble.reposition(petBoundsFull(), petWorkArea())
   })
   ipcMain.on(IPC.SET_IGNORE_MOUSE, (_e, raw) => {
     const ignore = validateBool(raw)
@@ -308,6 +353,8 @@ export function startShell(): void {
     const collapsed = validateBool(raw)
     if (collapsed === null) return
     dialog.setSize(collapsed)
+    dialogCollapsed = collapsed
+    refreshBubble() // 展开→隐藏气泡(回复走对话框 history);折叠→有内容则显示
   })
   ipcMain.on(IPC.QUIT, () => app.quit())
 
