@@ -1,7 +1,7 @@
 import { BrowserWindow, screen, shell } from 'electron'
 import { IPC, type ChatMessage } from '@shared/ipc'
 
-const COLLAPSED = { width: 320, height: 130 }
+const COLLAPSED = { width: 320, height: 120 }
 const EXPANDED = { width: 320, height: 440 }
 
 export interface DialogController {
