@@ -21,7 +21,7 @@ describe('settings v1 → v2 迁移', () => {
       provider: { kind: 'openai-compat', baseURL: 'https://api.deepseek.com/v1', model: 'deepseek-chat' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(5)
+    expect(s.schemaVersion).toBe(6)
     expect(s.search).toEqual({ backend: 'duckduckgo' })
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原有字段不丢
@@ -49,7 +49,7 @@ describe('settings v1 → v2 迁移', () => {
     const s = loadSettings(join(tmpdir(), 'definitely-missing', 'nope.json'))
     expect(s.search.backend).toBe('duckduckgo')
     expect(s.memory).toEqual({ embedding: null })
-    expect(s.schemaVersion).toBe(5)
+    expect(s.schemaVersion).toBe(6)
   })
 })
 
@@ -71,7 +71,7 @@ describe('v2 -> v3 迁移(memory)', () => {
       search: { backend: 'tavily' }
     }))
     const s = loadSettings(file)
-    expect(s.schemaVersion).toBe(5)
+    expect(s.schemaVersion).toBe(6)
     expect(s.memory).toEqual({ embedding: null })
     expect(s.provider.model).toBe('deepseek-chat') // 原字段不丢
     expect(s.search.backend).toBe('tavily')
@@ -109,7 +109,7 @@ describe('MVP-08 textTools 迁移', () => {
       search: { backend: 'duckduckgo' },
       memory: { embedding: null }
     })
-    expect(out.schemaVersion).toBe(5)
+    expect(out.schemaVersion).toBe(6)
     expect(out.textTools).toEqual({ autoCopyResult: false })
   })
 
@@ -121,5 +121,32 @@ describe('MVP-08 textTools 迁移', () => {
   it('textTools 非法值退化为默认 false', () => {
     const out = normalizeSettings({ textTools: { autoCopyResult: 'yes' } })
     expect(out.textTools.autoCopyResult).toBe(false)
+  })
+})
+
+describe('MVP-12 firecrawl 迁移', () => {
+  it('缺失 firecrawl 时补默认 { enabled:false } 且 schemaVersion 升到 6', () => {
+    const out = normalizeSettings({
+      schemaVersion: 5,
+      activePetId: 'luluka',
+      provider: { kind: 'anthropic', model: 'claude-haiku-4-5' },
+      search: { backend: 'duckduckgo' },
+      memory: { embedding: null },
+      textTools: { autoCopyResult: false }
+    })
+    expect(out.schemaVersion).toBe(6)
+    expect(out.firecrawl).toEqual({ enabled: false, baseURL: undefined })
+  })
+
+  it('保留已存的 enabled:true 与 baseURL', () => {
+    const out = normalizeSettings({ firecrawl: { enabled: true, baseURL: 'https://self.host' } })
+    expect(out.firecrawl.enabled).toBe(true)
+    expect(out.firecrawl.baseURL).toBe('https://self.host')
+  })
+
+  it('enabled 非布尔退化 false;空 baseURL 归一为 undefined', () => {
+    const out = normalizeSettings({ firecrawl: { enabled: 'yes', baseURL: '   ' } })
+    expect(out.firecrawl.enabled).toBe(false)
+    expect(out.firecrawl.baseURL).toBeUndefined()
   })
 })

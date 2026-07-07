@@ -129,7 +129,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       provider,
       search: { backend: searchBackend.value as SearchBackendKind },
       memory: { embedding },
-      textTools: { autoCopyResult: autoCopyResult.checked }
+      textTools: { autoCopyResult: autoCopyResult.checked },
+      firecrawl: { enabled: false }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value

@@ -15,7 +15,8 @@ const settings: AppSettings = {
   provider: { kind: 'fake', model: 'fake' },
   search: { backend: 'duckduckgo' },
   memory: { embedding: null },
-  textTools: { autoCopyResult: false }
+  textTools: { autoCopyResult: false },
+  firecrawl: { enabled: false }
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {
