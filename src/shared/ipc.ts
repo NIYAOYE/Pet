@@ -43,7 +43,13 @@ export const IPC = {
   REMOVE_TODO: 'todos:remove',
   TODO_UPDATE: 'todos:update',
   TODO_FIRED: 'todos:fired',
-  OPEN_TODO_PANEL: 'todos:open-panel'
+  OPEN_TODO_PANEL: 'todos:open-panel',
+  BUBBLE_STREAM: 'bubble:stream',
+  BUBBLE_STATUS: 'bubble:status',
+  BUBBLE_DONE: 'bubble:done',
+  BUBBLE_ERROR: 'bubble:error',
+  BUBBLE_CLEAR: 'bubble:clear',
+  BUBBLE_PLACE: 'bubble:place'
 } as const
 
 export interface LoadedPet {
@@ -135,8 +141,19 @@ export interface TodoApi {
   openPanel(): void
 }
 
+export interface BubblePlace { tailSide: 'top' | 'bottom'; tailOffsetX: number }
+
+export interface BubbleApi {
+  onStream(cb: (text: string) => void): void
+  onStatus(cb: (text: string) => void): void
+  onDone(cb: () => void): void
+  onError(cb: (message: string) => void): void
+  onClear(cb: () => void): void
+  onPlace(cb: (p: BubblePlace) => void): void
+}
+
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi }
 }
 
 export type { PetEvent, Bounds }
