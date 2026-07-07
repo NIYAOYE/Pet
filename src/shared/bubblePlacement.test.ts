@@ -55,4 +55,21 @@ describe('bubblePlacement', () => {
     expect(p.x).toBe(1920)                     // 夹到副屏 workArea.x,不回到主屏
     expect(p.tailOffsetX).toBe(28)             // petCenterX - x = 1948 - 1920 = 28
   })
+
+  it('宠物被拖拽到屏幕下方界外(手动拖拽不夹取位置):y 仍夹进工作区', () => {
+    // pet.y=5000 远超工作区高度;aboveY = 5000-172-8 = 4820,不夹取会越界
+    const pet = { x: 800, y: 5000, width: 256, height: 288 }
+    const p = bubblePlacement(pet, WA, B)
+    expect(p.y).toBe(1040 - 172) // 夹到 workArea.y + workArea.height - bubble.height
+    expect(p.y).toBeGreaterThanOrEqual(WA.y)
+    expect(p.y + B.height).toBeLessThanOrEqual(WA.y + WA.height)
+  })
+
+  it('宠物被拖拽到屏幕上方界外(手动拖拽不夹取位置):y 仍夹进工作区', () => {
+    // pet.y=-500 远在工作区上方;belowY = -500+288+8 = -204,不夹取会越界(负值)
+    const pet = { x: 800, y: -500, width: 256, height: 288 }
+    const p = bubblePlacement(pet, WA, B)
+    expect(p.y).toBe(0) // 夹到 workArea.y
+    expect(p.y).toBeGreaterThanOrEqual(WA.y)
+  })
 })

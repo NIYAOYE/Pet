@@ -41,9 +41,12 @@ export function bubblePlacement(
     y = belowY
     tailSide = 'top'
   } else {
-    y = Math.max(workArea.y, Math.min(aboveY, workArea.y + workArea.height - bubble.height))
+    y = aboveY
     tailSide = 'bottom'
   }
+  // 无论哪个分支选中的 y,宠物本身可能被拖拽到工作区之外(拖拽不限位),
+  // 因此这里统一夹取,确保输出的 y 始终完全落在 workArea 内。
+  y = Math.max(workArea.y, Math.min(y, workArea.y + workArea.height - bubble.height))
 
   // 尾巴水平偏移:指向宠物中心(相对气泡左缘),夹到内边距范围内
   let tailOffsetX = Math.round(petCenterX - x)
