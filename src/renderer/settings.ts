@@ -22,6 +22,7 @@ const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
+let savedDesktopControlEnabled = false
 
 // 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('#sidenav .navitem'))
@@ -149,7 +150,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
       },
-      desktopControl: { enabled: false }
+      desktopControl: { enabled: savedDesktopControlEnabled }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -167,6 +168,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
+  savedDesktopControlEnabled = snap.settings.desktopControl.enabled
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
