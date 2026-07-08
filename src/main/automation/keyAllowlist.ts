@@ -5,22 +5,21 @@
  */
 const VK_CONTROL = 0x11
 
-const ALLOWLIST: Record<string, number[]> = {
-  Enter: [0x0d],
-  Tab: [0x09],
-  Escape: [0x1b],
-  Backspace: [0x08],
-  Delete: [0x2e],
-  ArrowUp: [0x26],
-  ArrowDown: [0x28],
-  ArrowLeft: [0x25],
-  ArrowRight: [0x27],
-  'Ctrl+A': [VK_CONTROL, 0x41],
-  'Ctrl+C': [VK_CONTROL, 0x43],
-  'Ctrl+V': [VK_CONTROL, 0x56],
-  'Ctrl+X': [VK_CONTROL, 0x58],
-  'Ctrl+Z': [VK_CONTROL, 0x5a]
-}
+const ALLOWLIST: Record<string, number[]> = Object.create(null)
+ALLOWLIST.Enter = [0x0d]
+ALLOWLIST.Tab = [0x09]
+ALLOWLIST.Escape = [0x1b]
+ALLOWLIST.Backspace = [0x08]
+ALLOWLIST.Delete = [0x2e]
+ALLOWLIST.ArrowUp = [0x26]
+ALLOWLIST.ArrowDown = [0x28]
+ALLOWLIST.ArrowLeft = [0x25]
+ALLOWLIST.ArrowRight = [0x27]
+ALLOWLIST['Ctrl+A'] = [VK_CONTROL, 0x41]
+ALLOWLIST['Ctrl+C'] = [VK_CONTROL, 0x43]
+ALLOWLIST['Ctrl+V'] = [VK_CONTROL, 0x56]
+ALLOWLIST['Ctrl+X'] = [VK_CONTROL, 0x58]
+ALLOWLIST['Ctrl+Z'] = [VK_CONTROL, 0x5a]
 
 export const ALLOWED_KEY_NAMES: string[] = Object.keys(ALLOWLIST)
 

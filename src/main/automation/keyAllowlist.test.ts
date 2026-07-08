@@ -30,6 +30,13 @@ describe('resolveKey', () => {
     expect(resolveKey('')).toBeNull()
   })
 
+  it('原型链污染输入(Object.prototype 继承属性)一律返回 null', () => {
+    expect(resolveKey('__proto__')).toBeNull()
+    expect(resolveKey('constructor')).toBeNull()
+    expect(resolveKey('toString')).toBeNull()
+    expect(resolveKey('hasOwnProperty')).toBeNull()
+  })
+
   it('ALLOWED_KEY_NAMES 与可解析的键名集合一致', () => {
     for (const name of ALLOWED_KEY_NAMES) expect(resolveKey(name)).not.toBeNull()
   })
