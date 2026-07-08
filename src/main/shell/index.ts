@@ -1,4 +1,4 @@
-import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, type Tray } from 'electron'
+import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
 import { join } from 'node:path'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
@@ -435,6 +435,20 @@ export function startShell(): void {
   })
   ipcMain.handle(IPC.SET_FIRECRAWL_KEY, async (_e, raw): Promise<boolean> => {
     const key = validateKey(raw); return key === null ? false : firecrawlSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.CONFIRM_DESKTOP_CONTROL, async (): Promise<boolean> => {
+    const parent = BrowserWindow.getFocusedWindow()
+    const options = {
+      type: 'warning' as const,
+      buttons: ['取消', '确认开启'],
+      defaultId: 0,
+      cancelId: 0,
+      title: '开启桌面控制风险提示',
+      message: '开启后,AI 可以在对话中自主截屏(屏幕内容会发送给你配置的模型服务商)、控制鼠标点击与键盘输入。',
+      detail: '可能造成误操作或截取到敏感信息;开启后随时可在设置里再次关闭。'
+    }
+    const result = parent ? await electronDialog.showMessageBox(parent, options) : await electronDialog.showMessageBox(options)
+    return result.response === 1
   })
   ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
     mkdirSync(memoryDir, { recursive: true })

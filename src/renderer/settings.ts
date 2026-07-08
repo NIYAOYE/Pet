@@ -18,11 +18,11 @@ const firecrawlKey = $<HTMLInputElement>('firecrawlKey')
 const firecrawlBaseURL = $<HTMLInputElement>('firecrawlBaseURL')
 const firecrawlKeyRow = $<HTMLElement>('firecrawlKeyRow')
 const firecrawlBaseRow = $<HTMLElement>('firecrawlBaseRow')
+const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
-let savedDesktopControlEnabled = false
 
 // 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('#sidenav .navitem'))
@@ -73,6 +73,13 @@ function syncFirecrawlRows(): void {
   firecrawlBaseRow.style.display = show
 }
 firecrawlEnabled.addEventListener('change', syncFirecrawlRows)
+desktopControlEnabled.addEventListener('change', () => {
+  if (!desktopControlEnabled.checked) return
+  void (async () => {
+    const confirmed = await window.settingsApi.confirmDesktopControl()
+    if (!confirmed) desktopControlEnabled.checked = false
+  })()
+})
 $<HTMLButtonElement>('openMemoryDir').addEventListener('click', () => window.settingsApi.openMemoryDir())
 
 async function refreshPets(selectId: string): Promise<void> {
@@ -150,7 +157,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: firecrawlEnabled.checked,
         baseURL: firecrawlBaseURL.value.trim() || undefined
       },
-      desktopControl: { enabled: savedDesktopControlEnabled }
+      desktopControl: { enabled: desktopControlEnabled.checked }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -168,7 +175,6 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
-  savedDesktopControlEnabled = snap.settings.desktopControl.enabled
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
@@ -187,6 +193,7 @@ void (async () => {
   if (snap.settings.firecrawl.baseURL) firecrawlBaseURL.value = snap.settings.firecrawl.baseURL
   if (snap.hasFirecrawlKey) firecrawlKey.placeholder = '(已配置,如需更换请重新填写)'
   syncFirecrawlRows()
+  desktopControlEnabled.checked = snap.settings.desktopControl.enabled
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
 })()
