@@ -2,11 +2,10 @@ import { renderMarkdownSafe } from './markdown'
 
 const box = document.getElementById('box') as HTMLElement
 const tail = document.getElementById('tail') as HTMLElement
-const wrap = document.getElementById('wrap') as HTMLElement
 
 let streaming = '' // 流式累积的纯文本
 
-// 内容变化后测量 wrap(box+tail)的自然高度并上报主进程；rAF 合并高频调用(逐 token 流式输出时
+// 内容变化后测量 box+tail 的自然高度并上报主进程；rAF 合并高频调用(逐 token 流式输出时
 // 最多每帧上报一次)，主进程夹取范围后重新摆位，实现"跟手实时长高"且不打爆 IPC。
 let resizeScheduled = false
 function scheduleReportSize(): void {
@@ -14,7 +13,7 @@ function scheduleReportSize(): void {
   resizeScheduled = true
   requestAnimationFrame(() => {
     resizeScheduled = false
-    window.bubbleApi.reportSize(wrap.scrollHeight)
+    window.bubbleApi.reportSize(box.scrollHeight + tail.offsetHeight)
   })
 }
 
