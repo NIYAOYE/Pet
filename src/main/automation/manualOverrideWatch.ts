@@ -8,11 +8,15 @@ export function hasManualOverride(
   return Math.sqrt(dx * dx + dy * dy) > thresholdPx
 }
 
-export interface LastAiPosTracker { set(p: { x: number; y: number }): void; get(): { x: number; y: number } | null }
+export interface LastAiPosTracker {
+  set(p: { x: number; y: number }): void
+  get(): { x: number; y: number } | null
+  clear(): void
+}
 
 export function createLastAiPosTracker(): LastAiPosTracker {
   let pos: { x: number; y: number } | null = null
-  return { set: (p) => { pos = p }, get: () => pos }
+  return { set: (p) => { pos = p }, get: () => pos, clear: () => { pos = null } }
 }
 
 export interface ManualOverrideWatch { stop(): void }

@@ -202,6 +202,10 @@ export function startShell(): void {
   let manualOverrideWatch: ReturnType<typeof startManualOverrideWatch> | null = null
   const indicatorGate = createIndicatorGate(
     () => {
+      // 每轮桌面控制开始时清空上一轮残留的 lastAiPos:否则 manualOverrideWatch 首个 tick 会拿
+      // 上一轮点击坐标去比对本轮真实光标——用户在两轮之间正常移动鼠标就会被误判为"人工接管",
+      // 提前 cancel() 本轮尚未开始点击的自动化(fail-safe 但会打断用户,见 review finding)。
+      lastAiPos.clear()
       controlIndicator.show()
       manualOverrideWatch = startManualOverrideWatch({
         getCursorPos: () => {

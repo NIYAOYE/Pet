@@ -21,6 +21,14 @@ describe('createLastAiPosTracker', () => {
     t.set({ x: 5, y: 6 })
     expect(t.get()).toEqual({ x: 5, y: 6 })
   })
+
+  it('set 后 clear() → get() 回到 null', () => {
+    const t = createLastAiPosTracker()
+    t.set({ x: 5, y: 6 })
+    expect(t.get()).toEqual({ x: 5, y: 6 })
+    t.clear()
+    expect(t.get()).toBeNull()
+  })
 })
 
 describe('startManualOverrideWatch', () => {
