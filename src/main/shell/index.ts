@@ -2,6 +2,15 @@ import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as el
 import { join } from 'node:path'
 import { mkdirSync, readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
+import { execFile as execFileCb } from 'node:child_process'
+import { promisify } from 'node:util'
+import { createAutomationControl } from '../automation/automationControl'
+import { createScreenshotState } from '../automation/screenshotState'
+import { captureFullScreen } from '../media/fullScreenCapture'
+import { createDesktopTools } from '../tools/desktopTools'
+import { createControlIndicator } from './controlIndicator'
+import { createIndicatorGate, wrapToolsWithGate } from '../automation/toolIndicatorGate'
+import { createLastAiPosTracker, startManualOverrideWatch } from '../automation/manualOverrideWatch'
 import {
   IPC,
   type WindowBounds,
@@ -176,6 +185,49 @@ export function startShell(): void {
   // 待办是用户的、非宠物皮肤的数据——全局存储,换宠物(petHome 会变)也不能丢/分叉待办
   const todoStore = createTodoStore({ file: join(userData, 'todos.json') })
 
+  const execFileP = promisify(execFileCb)
+  const automationControl = createAutomationControl({
+    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
+  })
+
+  let petDisplayName = '宠物'
+  void loadPet(petDir).then((p) => { petDisplayName = p.manifest.displayName }).catch(() => {})
+  const controlIndicator = createControlIndicator(petDisplayName)
+  // 注意:petDisplayName 在上面异步赋值前,createControlIndicator 已经用初值 '宠物' 烘焙好了 HTML —— 这是可接受的
+  // 时序缝隙(indicator 只在真正调用桌面控制工具时才 show(),而 loadPet 是应用启动时就发起的,
+  // 实际到第一次 show() 时 loadPet 早已 resolve)。若真机验收发现极端早期调用露出了默认名,
+  // 把 createControlIndicator 的调用挪到 loadPet(petDir).then(...) 回调里即可,是可选的加固。
+
+  const lastAiPos = createLastAiPosTracker()
+  let manualOverrideWatch: ReturnType<typeof startManualOverrideWatch> | null = null
+  const indicatorGate = createIndicatorGate(
+    () => {
+      controlIndicator.show()
+      manualOverrideWatch = startManualOverrideWatch({
+        getCursorPos: () => {
+          const p = screen.getCursorScreenPoint()
+          const d = screen.getDisplayNearestPoint(p)
+          return { x: Math.round(p.x * d.scaleFactor), y: Math.round(p.y * d.scaleFactor) }
+        },
+        getLastAiPos: () => lastAiPos.get(),
+        onOverride: () => { chat.cancel() }
+      })
+    },
+    () => {
+      controlIndicator.hide()
+      manualOverrideWatch?.stop()
+      manualOverrideWatch = null
+    }
+  )
+
+  const automationWithTracking = {
+    ...automationControl,
+    click: async (input: Parameters<typeof automationControl.click>[0]) => {
+      lastAiPos.set({ x: input.x, y: input.y })
+      return automationControl.click(input)
+    }
+  }
+
   const chat = createChatStore({
     petDir,
     skills,
@@ -185,6 +237,13 @@ export function startShell(): void {
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
     getFirecrawlKey: () => firecrawlSecrets.getKey(),
+    buildDesktopTools: () => createDesktopTools({
+      platform: process.platform,
+      automation: automationWithTracking,
+      screenshotState: createScreenshotState(), // 每次 handleSend 都是全新一个 —— 每轮对话自然重置
+      captureScreen: () => captureFullScreen(screen.getDisplayNearestPoint(screen.getCursorScreenPoint()))
+    }),
+    wrapDesktopTools: (tools) => wrapToolsWithGate(tools, indicatorGate),
     prepareImages: (atts) => atts.map((a) => prepareImage(a)),
     clipboard: { readText: () => clipboard.readText(), writeText: (t) => clipboard.writeText(t) },
     emitPetEvent,
