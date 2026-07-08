@@ -190,13 +190,14 @@ export function startShell(): void {
     execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script]).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
   })
 
-  let petDisplayName = '宠物'
-  void loadPet(petDir).then((p) => { petDisplayName = p.manifest.displayName }).catch(() => {})
-  const controlIndicator = createControlIndicator(petDisplayName)
-  // 注意:petDisplayName 在上面异步赋值前,createControlIndicator 已经用初值 '宠物' 烘焙好了 HTML —— 这是可接受的
-  // 时序缝隙(indicator 只在真正调用桌面控制工具时才 show(),而 loadPet 是应用启动时就发起的,
-  // 实际到第一次 show() 时 loadPet 早已 resolve)。若真机验收发现极端早期调用露出了默认名,
-  // 把 createControlIndicator 的调用挪到 loadPet(petDir).then(...) 回调里即可,是可选的加固。
+  // createControlIndicator bakes the display name into the window's HTML at construction
+  // time, so it must not be built until the real name is known — a placeholder assigned
+  // by-value here would never propagate into the already-created window. Deferred to the
+  // loadPet(...).then() callback; show()/hide() below no-op safely if called before it resolves.
+  let controlIndicator: ReturnType<typeof createControlIndicator> | null = null
+  void loadPet(petDir)
+    .then((p) => { controlIndicator = createControlIndicator(p.manifest.displayName) })
+    .catch(() => { controlIndicator = createControlIndicator('宠物') })
 
   const lastAiPos = createLastAiPosTracker()
   let manualOverrideWatch: ReturnType<typeof startManualOverrideWatch> | null = null
@@ -206,7 +207,7 @@ export function startShell(): void {
       // 上一轮点击坐标去比对本轮真实光标——用户在两轮之间正常移动鼠标就会被误判为"人工接管",
       // 提前 cancel() 本轮尚未开始点击的自动化(fail-safe 但会打断用户,见 review finding)。
       lastAiPos.clear()
-      controlIndicator.show()
+      controlIndicator?.show()
       manualOverrideWatch = startManualOverrideWatch({
         getCursorPos: () => {
           const p = screen.getCursorScreenPoint()
@@ -218,7 +219,7 @@ export function startShell(): void {
       })
     },
     () => {
-      controlIndicator.hide()
+      controlIndicator?.hide()
       manualOverrideWatch?.stop()
       manualOverrideWatch = null
     }
