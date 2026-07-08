@@ -124,4 +124,20 @@ describe('tool_result 带图像', () => {
     expect(toAnthropicMessages(plain)[0]).toEqual({ role: 'user', content: [{ type: 'tool_result', tool_use_id: 'tu_1', content: '结果A' }] })
     expect(toOpenAiMessages('s', plain)[1]).toEqual({ role: 'tool', tool_call_id: 'tu_1', content: '结果A' })
   })
+
+  it('anthropic:tool_result content 为空字符串且带图像时,不产出空 text block(避免 Anthropic 400)', () => {
+    const emptyTextMsg: AgentMessage[] = [
+      { role: 'tool_result', toolUseId: 'tu_1', content: '', images: [{ mimeType: 'image/jpeg', dataBase64: 'QUJD' }] }
+    ]
+    const out = toAnthropicMessages(emptyTextMsg)
+    expect(out).toEqual([{
+      role: 'user',
+      content: [{
+        type: 'tool_result', tool_use_id: 'tu_1',
+        content: [
+          { type: 'image', source: { type: 'base64', media_type: 'image/jpeg', data: 'QUJD' } }
+        ]
+      }]
+    }])
+  })
 })

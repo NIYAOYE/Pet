@@ -27,7 +27,8 @@ export function toAnthropicMessages(messages: AgentMessage[]): AnthropicMessageL
       if (last && last.role === 'assistant' && Array.isArray(last.content)) last.content.push(...blocks)
       else out.push({ role: 'assistant', content: blocks })
     } else if (m.role === 'tool_result') {
-      const contentBlocks: Array<Record<string, unknown>> = [{ type: 'text', text: m.content }]
+      const contentBlocks: Array<Record<string, unknown>> = []
+      if (m.content) contentBlocks.push({ type: 'text', text: m.content })
       if (m.images && m.images.length > 0) {
         for (const img of m.images) contentBlocks.push({ type: 'image', source: { type: 'base64', media_type: img.mimeType, data: img.dataBase64 } })
       }
