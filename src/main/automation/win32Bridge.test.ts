@@ -44,6 +44,17 @@ describe('buildTypeTextScript', () => {
     const b64 = Buffer.from('你好', 'utf16le').toString('base64')
     expect(s).toContain(b64)
   })
+
+  it('不使用两层以上的链式结构体属性赋值(真机验证 PowerShell 不会写回,详见 win32Bridge.ts 顶部注释)', () => {
+    const s = buildTypeTextScript('x')
+    // 真机诊断已确认:`$down.U.ki.wScan = $code` 这类三段式链式赋值在 PowerShell 里
+    // 只会改到一份临时拷贝、写不回 $down 本体,导致 SendInput 发出全零的无效按键
+    // (真实症状:模型自称打了字,画面上什么都没出现)。正确写法必须先把 KEYBDINPUT
+    // 单独建成一个变量、赋给 InputUnion 变量,再整体赋回 INPUT.U ——每次赋值只下探一层。
+    expect(s).not.toMatch(/\$(down|up)\.U\.ki\.\w+\s*=/)
+    expect(s).toContain('PetAgentAutomation.Native+KEYBDINPUT')
+    expect(s).toContain('PetAgentAutomation.Native+InputUnion')
+  })
 })
 
 describe('buildPressKeyScript', () => {

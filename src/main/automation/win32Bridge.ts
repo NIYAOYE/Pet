@@ -5,6 +5,19 @@
  *
  * 安全:任何模型可控的自由文本(打字内容、窗口标题查询词)一律 base64 编码后
  * 嵌入脚本、脚本内部再解码 —— 避免把不可信文本裸插值进 shell 命令引发注入。
+ *
+ * 两个真机验证过的 PowerShell 坑,记在这里(生成的脚本正文本身不写中文注释,
+ * 见下一条):
+ * 1. `buildTypeTextScript` 绝不能用链式属性给嵌套结构体赋值(如 $down.U.ki.wScan = x)——
+ *    PowerShell 的每一级 `.` 访问都会先拷出一份临时拷贝,赋值只改到临时拷贝,原结构体
+ *    永远收不到写入(真机诊断实测:链式写法跑完后回读嵌套字段仍是 0,导致 SendInput
+ *    发出全零无效按键,现象是模型自称打了字但画面上什么都没出现)。必须把 KEYBDINPUT
+ *    单独建成变量、整体赋给 InputUnion 变量,再整体赋回 INPUT.U——每次赋值只下探一层。
+ * 2. 生成的 .ps1 脚本正文里不能出现非 ASCII 字符(包括中文注释)。Windows PowerShell 5.1
+ *    对没有 BOM 的 .ps1 文件按系统默认代码页(而非 UTF-8)解码,中文字符的 UTF-8 字节
+ *    在被误读成别的编码后可能破坏后续脚本的解析(真机验证实测复现:仅仅加了一行中文
+ *    注释就让本来能跑的脚本又开始报 "属性找不到")。凡是新增到脚本正文里的注释一律
+ *    用英文,或者干脆不写——真正的解释放在这份 TS 源码的注释里就够了。
  */
 
 const NATIVE_HEADER = `
@@ -77,17 +90,27 @@ export function buildTypeTextScript(text: string): string {
   return `${NATIVE_HEADER}
 $bytes = [Convert]::FromBase64String("${b64}")
 $text = [System.Text.Encoding]::Unicode.GetString($bytes)
+$sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type]"PetAgentAutomation.Native+INPUT")
 foreach ($ch in $text.ToCharArray()) {
   $code = [uint16][char]$ch
+  $downKi = New-Object PetAgentAutomation.Native+KEYBDINPUT
+  $downKi.wScan = $code
+  $downKi.dwFlags = [PetAgentAutomation.Native]::KEYEVENTF_UNICODE
+  $downUnion = New-Object PetAgentAutomation.Native+InputUnion
+  $downUnion.ki = $downKi
   $down = New-Object PetAgentAutomation.Native+INPUT
   $down.type = [PetAgentAutomation.Native]::INPUT_KEYBOARD
-  $down.U.ki.wScan = $code
-  $down.U.ki.dwFlags = [PetAgentAutomation.Native]::KEYEVENTF_UNICODE
+  $down.U = $downUnion
+
+  $upKi = New-Object PetAgentAutomation.Native+KEYBDINPUT
+  $upKi.wScan = $code
+  $upKi.dwFlags = [PetAgentAutomation.Native]::KEYEVENTF_UNICODE -bor [PetAgentAutomation.Native]::KEYEVENTF_KEYUP
+  $upUnion = New-Object PetAgentAutomation.Native+InputUnion
+  $upUnion.ki = $upKi
   $up = New-Object PetAgentAutomation.Native+INPUT
   $up.type = [PetAgentAutomation.Native]::INPUT_KEYBOARD
-  $up.U.ki.wScan = $code
-  $up.U.ki.dwFlags = [PetAgentAutomation.Native]::KEYEVENTF_UNICODE -bor [PetAgentAutomation.Native]::KEYEVENTF_KEYUP
-  $sz = [System.Runtime.InteropServices.Marshal]::SizeOf([type]"PetAgentAutomation.Native+INPUT")
+  $up.U = $upUnion
+
   [PetAgentAutomation.Native]::SendInput(1, [PetAgentAutomation.Native+INPUT[]]@($down), $sz) | Out-Null
   [PetAgentAutomation.Native]::SendInput(1, [PetAgentAutomation.Native+INPUT[]]@($up), $sz) | Out-Null
   Start-Sleep -Milliseconds 8
