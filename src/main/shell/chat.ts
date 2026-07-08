@@ -53,6 +53,10 @@ export function createChatStore(opts: {
   getKey: () => string | null
   getSearchKey: () => string | null
   getFirecrawlKey: () => string | null
+  /** 桌面控制六个工具的真实构造器;未注入(如多数既有测试)则该能力永不出现,与 settings 开关无关 */
+  buildDesktopTools?: () => import('../tools/toolSpec').ToolSpec[]
+  /** 给桌面控制工具套上指示器显隐等生命周期钩子;省略则原样返回 */
+  wrapDesktopTools?: (tools: import('../tools/toolSpec').ToolSpec[]) => import('../tools/toolSpec').ToolSpec[]
   /** 测试注入缝;生产默认 createProvider */
   makeProvider?: (provider: ProviderSettings, key: string) => LlmProvider
   /** 主进程注入的图像预处理(chat.ts 不 import electron;测试注入直通实现) */
@@ -194,6 +198,10 @@ export function createChatStore(opts: {
         const fc = createFirecrawlClient({ getKey: opts.getFirecrawlKey, baseURL: settings.firecrawl.baseURL })
         tools.push(createReadUrlTool(fc), createExtractFromUrlTool(fc))
       }
+      if (settings.desktopControl.enabled && opts.buildDesktopTools) {
+        const wrap = opts.wrapDesktopTools ?? ((t: typeof tools) => t)
+        tools.push(...wrap(opts.buildDesktopTools()))
+      }
       const registry = createToolRegistry(tools)
 
       const ctrl = new AbortController()
@@ -212,6 +220,7 @@ export function createChatStore(opts: {
           system,
           messages,
           registry,
+          maxToolRounds: settings.desktopControl.enabled ? 20 : undefined,
           maxOutputTokens: MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,
