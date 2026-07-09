@@ -66,3 +66,15 @@ describe('promptAssembler 当前时间注入', () => {
     expect(system).not.toContain('当前时间')
   })
 })
+
+describe('工具执行规范注入', () => {
+  it('hasTools=true 时 system 含"工具执行规范"小节', () => {
+    const { system } = assemblePrompt(persona, [], [], undefined, undefined, true)
+    expect(system).toContain('# 工具执行规范')
+  })
+
+  it('hasTools 缺省(false)时不出现该小节', () => {
+    const { system } = assemblePrompt(persona, [])
+    expect(system).not.toContain('工具执行规范')
+  })
+})

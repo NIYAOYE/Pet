@@ -29,8 +29,9 @@ const MAX_OUTPUT_TOKENS = 1024
 // take_screenshot 之后的分析文字、type_text 的长文本)容易一起挤爆默认的 1024,
 // 真机验证复现过:回复被截断导致工具调用的 JSON 参数不完整,模型"有输入的意图
 // 但从未真正调用成功"——见 messageMapping/agentLoop 对截断的兜底(该兜底防止静默
-// 失败,但更大的预算能从源头降低触发概率)。
-const DESKTOP_CONTROL_MAX_OUTPUT_TOKENS = 4096
+// 失败,但更大的预算能从源头降低触发概率)。推理模型(如 gpt-5.5)的内部思考也计入
+// 输出预算,4096 偏紧、容易在生成可见内容前就被截断,调到 8192。
+const DESKTOP_CONTROL_MAX_OUTPUT_TOKENS = 8192
 const UNCONFIGURED_REPLY = '(还没接上大脑)先在托盘「设置」里选好 Provider 并填 API Key 吧~我已帮你打开设置。'
 export const MAX_CLIPBOARD_CHARS = 8000
 const QUICK_ACTION_UNTRUSTED_HEADER =
@@ -217,7 +218,14 @@ export function createChatStore(opts: {
         // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
         const recalled = await opts.memory.recall(text, ctrl.signal)
         if (ctrl.signal.aborted) return
-        const { system, messages } = assemblePrompt(persona, opts.memory.messages(), opts.skills.list(), recalled, Date.now())
+        const { system, messages } = assemblePrompt(
+          persona,
+          opts.memory.messages(),
+          opts.skills.list(),
+          recalled,
+          Date.now(),
+          tools.length > 0
+        )
         // 图挂当前回合:窗口末条即刚追加的 user 消息(assemblePrompt 已裁到 user 起头)
         const lastUser = messages[messages.length - 1]
         if (images.length > 0 && lastUser && lastUser.role === 'user') lastUser.images = images

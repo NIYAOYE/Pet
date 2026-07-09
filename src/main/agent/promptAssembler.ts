@@ -19,6 +19,21 @@ function skillsSection(skills: SkillMeta[]): string {
   )
 }
 
+/**
+ * 模型无关的 agentic 执行硬规矩,不依赖各宠物 persona.md 的散文式文案——弱模型(工具调用
+ * 意愿弱)也能靠这段结构化指令得到约束,而不是完全指望人设文本里恰好提到类似要求。
+ * 只在确实有工具可用时注入(无工具的场景,如剪贴板加工快捷指令,注入这段没有意义)。
+ */
+function toolExecutionSection(hasTools: boolean): string {
+  if (!hasTools) return ''
+  return (
+    '\n\n# 工具执行规范\n' +
+    '1. 需要执行动作时必须真正调用工具,不能只用文字描述"我将要……"却不实际调用。\n' +
+    '2. 有视觉反馈的动作(点击/输入等)前后配合 take_screenshot 验证执行结果。\n' +
+    '3. 任务未完成不要提前结束回复;只有需要用户确认或介入时,才可以用文字说明并停下来等待。'
+  )
+}
+
 /** §5.4:[人设分块]+[召回的长期记忆]+[工作记忆摘要],记忆为空时对应小节整体省略 */
 function memorySection(memory?: MemoryContext): string {
   if (!memory) return ''
@@ -45,13 +60,15 @@ export function assemblePrompt(
   transcript: ChatMessage[],
   skills: SkillMeta[] = [],
   memory?: MemoryContext,
-  nowMs?: number
+  nowMs?: number,
+  hasTools = false
 ): AssembledPrompt {
   const system =
     timeSection(nowMs) +
     [persona.persona, persona.voice, persona.behavior, persona.tools]
       .filter((s) => s.trim().length > 0)
       .join('\n\n') +
+    toolExecutionSection(hasTools) +
     skillsSection(skills) +
     memorySection(memory)
 
