@@ -84,7 +84,7 @@ DOM/可访问性树按**文字/角色**定位元素,不需要模型猜坐标,对
 | 文件 | 职责 |
 |---|---|
 | `browserAutomation/browserLifecycle.ts` | **纯函数**:根据 `settings.browserControl`(`enabled`/`mode`)算出启动参数——独立实例模式的 `launch()` 选项,或 CDP 模式的连接目标 URL。可单测(输入 settings → 输出启动配置对象)。 |
-| `browserAutomation/browserControl.ts` | **副作用外壳**(不可单测,靠真机验收,同 `automation/desktopControl.ts`/`media/screenCapture.ts` 先例):持有当前 Playwright `Browser`/`BrowserContext`/`Page` 状态,包装成 `navigate`/`click`/`fill`/`readText`/`screenshot`/`scroll`/`waitFor`/`listTabs`/`openTab`/`switchTab`/`close` 方法。浏览器被用户手动关闭(点了窗口的 ✕)后,下一次调用要给清晰的"浏览器已关闭"报错(下次 `browser_navigate` 时允许重新懒启动),不能让整个工具调用崩溃或悬挂。 |
+| `browserAutomation/browserControl.ts` | **副作用外壳,但边界可注入、逻辑可单测**(同 `automation/automationControl.ts` 先例——那个文件注入 `execFile` 后用假 stdout 测分支逻辑,不需要真的跑 PowerShell;这里同理注入一个最小的 Playwright 驱动接口,用假 Page/Browser 桩测状态管理与分支逻辑,不需要真的起浏览器):持有当前 Playwright `Browser`/`BrowserContext`/`Page` 状态,包装成 `navigate`/`click`/`fill`/`readText`/`screenshot`/`scroll`/`waitFor`/`listTabs`/`openTab`/`switchTab`/`close` 方法。浏览器被用户手动关闭(点了窗口的 ✕)后,下一次调用要给清晰的"浏览器已关闭"报错(下次 `browser_navigate` 时允许重新懒启动),不能让整个工具调用崩溃或悬挂。 |
 
 **生命周期(关键设计点)**:浏览器实例是**主进程单例、跨对话轮次存活**——不是每次 `handleSend` 都
 重新创建。理由:多步网页任务天然跨越多条用户消息("打开B站"→下一句"点第一个视频"),如果每轮对话
@@ -139,8 +139,11 @@ export interface BrowserControlSettings { enabled: boolean; mode: BrowserControl
 
 - `browserAutomation/browserLifecycle.ts`:纯函数,TDD 单测(不同 `settings.browserControl` 输入 →
   正确的 launch 参数 / CDP 连接目标)。
-- `browserAutomation/browserControl.ts`:与 `desktopControl.ts`/`screenCapture.ts` 同一先例,不做
-  单测(真实驱动 Playwright/浏览器进程),靠真机验收。
+- `browserAutomation/browserControl.ts`:与 `automation/automationControl.ts` 同一先例——注入一个最小
+  的 Playwright 驱动接口(launch/connectOverCDP + Page 用到的那几个方法),单测用假驱动/假 Page 桩
+  覆盖状态管理与分支逻辑(活动标签页切换、浏览器已关闭后的报错、`waitFor` 超时等),不需要真的起
+  浏览器。真实 Playwright 驱动接口本身(`chromium.launch`/`connectOverCDP` 是否真的能连上真实浏览器)
+  不做单测,靠真机验收。
 - `tools/browserTools.ts`:仿 `desktopTools.test.ts` 的做法——注入假的 `BrowserControl` 实现,单测
   每个工具的入参校验、成功/失败文案、`ToolRunOutput.images` 透传(`browser_screenshot`)等纯逻辑,
   不启动真实浏览器。
