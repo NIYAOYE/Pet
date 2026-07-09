@@ -21,6 +21,7 @@ export interface OpenAiChunkLike {
  */
 export async function* normalizeOpenAiChunks(parts: AsyncIterable<OpenAiChunkLike>): AsyncIterable<StreamChunk> {
   const calls = new Map<number, { id: string; name: string; args: string }>()
+  let finishReason: string | undefined
   for await (const part of parts) {
     const choice = part.choices?.[0]
     if (!choice) continue
@@ -33,6 +34,7 @@ export async function* normalizeOpenAiChunks(parts: AsyncIterable<OpenAiChunkLik
       if (tc.function?.arguments) slot.args += tc.function.arguments
       calls.set(tc.index, slot)
     }
+    if (choice.finish_reason) finishReason = choice.finish_reason
     // "length" = 回复因达到 max_tokens 被截断(OpenAI 兼容端点的截断信号)。截断可能发生在
     // 工具调用参数生成到一半的时候,此时也必须把已聚合到的部分吐出——不然模型的工具调用
     // 意图会连同那部分参数一起被静默丢弃,agentLoop 那一轮直接收尾成纯文本回复,用户和
@@ -47,7 +49,7 @@ export async function* normalizeOpenAiChunks(parts: AsyncIterable<OpenAiChunkLik
       calls.clear()
     }
   }
-  yield { type: 'done' }
+  yield { type: 'done', finishReason }
 }
 
 export function createOpenAiCompatProvider(opts: { apiKey: string; baseURL?: string; model: string }): LlmProvider {
