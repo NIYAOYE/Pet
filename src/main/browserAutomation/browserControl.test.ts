@@ -144,13 +144,15 @@ describe('createBrowserControl', () => {
   })
 
   it('switchTab 传越界 index → ok:false,且不破坏当前活动标签页', async () => {
-    const page = fakePage()
-    const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([page])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
-    await control.navigate('https://a.com')
-    const r = await control.switchTab({ index: 9 })
+    const p0 = fakePage()
+    const p1 = fakePage()
+    const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([p0, p1])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+    await control.navigate('https://a.com') // activeIndex = 0
+    const r = await control.switchTab({ index: 9 }) // 越界,应该是 no-op
     expect(r.ok).toBe(false)
     await control.click({ text: 'y' })
-    expect((page.clickByText as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('y')
+    expect(p0.clickByText).toHaveBeenCalledWith('y') // 若 activeIndex 被越界值污染,会落到 p1 上,断言失败
+    expect(p1.clickByText).not.toHaveBeenCalled()
   })
 
   it('close:关闭浏览器,之后任何调用都报"浏览器已关闭"且能重新懒启动', async () => {
