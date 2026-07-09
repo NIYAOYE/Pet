@@ -46,7 +46,12 @@ export function createPlaywrightDriverFactory(): BrowserDriverFactory {
         const pages = context ? context.pages() : []
         return wrapBrowser(browser, pages.length > 0 ? pages : [await (context ?? await browser.newContext()).newPage()])
       }
-      const browser = await chromium.launch({ channel: plan.channel, headless: plan.headless })
+      // executablePath(若设置)会让 Playwright 完全绕开 channel 的自动探测——该探测在
+      // Windows 上优先检查 %LOCALAPPDATA%,一个损坏的 per-user Chrome 安装会因为"文件存在"
+      // 就被选中(不检查能否真的启动),即便系统级安装是好的也会被绕过,见 browserLifecycle.ts。
+      const browser = plan.executablePath
+        ? await chromium.launch({ executablePath: plan.executablePath, headless: plan.headless })
+        : await chromium.launch({ channel: plan.channel, headless: plan.headless })
       const context = await browser.newContext()
       const page = await context.newPage()
       return wrapBrowser(browser, [page])

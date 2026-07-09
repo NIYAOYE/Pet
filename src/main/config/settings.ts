@@ -39,7 +39,8 @@ export function normalizeSettings(raw: unknown): AppSettings {
   const bc = (r.browserControl ?? {}) as Record<string, unknown>
   const browserControl = {
     enabled: bc.enabled === true,
-    mode: bc.mode === 'cdp' ? 'cdp' as const : 'isolated' as const
+    mode: bc.mode === 'cdp' ? 'cdp' as const : 'isolated' as const,
+    chromePath: typeof bc.chromePath === 'string' && bc.chromePath.trim().length > 0 ? bc.chromePath.trim() : undefined
   }
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,

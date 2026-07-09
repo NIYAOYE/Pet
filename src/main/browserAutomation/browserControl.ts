@@ -56,7 +56,7 @@ export function createBrowserControl(opts: {
   /** 每次懒启动时都重新读取(同 chat.ts 的 loadSettings() 用法),而不是构造时快照一份——
    *  否则用户在设置里切换模式(独立实例↔CDP)在浏览器还没重新懒启动前不会生效,行为会跟
    *  其它设置项(如 desktopControl.enabled)不一致,让人以为改了没生效。 */
-  getSettings: () => Pick<BrowserControlSettings, 'mode'>
+  getSettings: () => Pick<BrowserControlSettings, 'mode' | 'chromePath'>
   cdpPort?: number
 }): BrowserControl {
   let browser: DriverBrowser | null = null

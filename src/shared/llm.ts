@@ -42,7 +42,11 @@ export interface FirecrawlSettings { enabled: boolean; baseURL?: string }
 export interface DesktopControlSettings { enabled: boolean }
 
 export type BrowserControlMode = 'isolated' | 'cdp'
-export interface BrowserControlSettings { enabled: boolean; mode: BrowserControlMode }
+/** chromePath:独立实例模式下可选的自定义 Chrome 可执行文件路径,绕开 Playwright 的
+ *  channel:'chrome' 自动探测——该探测在 Windows 上优先检查 %LOCALAPPDATA%,若用户机器上
+ *  同时存在一个损坏的 per-user 安装和一个能用的系统级安装,会优先选中坏的那个且无法察觉
+ *  (只做存在性检查,不检查是否真的能启动)。留空则维持原有自动探测行为。 */
+export interface BrowserControlSettings { enabled: boolean; mode: BrowserControlMode; chromePath?: string }
 
 export const SETTINGS_SCHEMA_VERSION = 8
 

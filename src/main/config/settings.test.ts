@@ -80,6 +80,15 @@ describe('browserControl', () => {
     const f = tmpSettingsFile({ browserControl: { enabled: true, mode: 'cdp' } })
     expect(loadSettings(f).browserControl).toEqual({ enabled: true, mode: 'cdp' })
   })
+  it('chromePath 有非空字符串 → 去除首尾空白后保留', () => {
+    const f = tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: '  C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe  ' } })
+    expect(loadSettings(f).browserControl.chromePath).toBe('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe')
+  })
+  it('chromePath 缺省/空字符串/非字符串 → undefined', () => {
+    expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated' } })).browserControl.chromePath).toBeUndefined()
+    expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: '   ' } })).browserControl.chromePath).toBeUndefined()
+    expect(loadSettings(tmpSettingsFile({ browserControl: { enabled: true, mode: 'isolated', chromePath: 123 } })).browserControl.chromePath).toBeUndefined()
+  })
   it('归一化后 schemaVersion 升为 8', () => {
     const f = tmpSettingsFile({ schemaVersion: 3 })
     expect(loadSettings(f).schemaVersion).toBe(8)

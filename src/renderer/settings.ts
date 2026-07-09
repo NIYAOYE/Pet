@@ -84,11 +84,17 @@ desktopControlEnabled.addEventListener('change', () => {
 const browserControlEnabled = $<HTMLInputElement>('browserControlEnabled')
 const browserControlMode = $<HTMLSelectElement>('browserControlMode')
 const browserControlModeRow = $<HTMLLabelElement>('browserControlModeRow')
+const browserControlChromePath = $<HTMLInputElement>('browserControlChromePath')
+const browserControlChromePathRow = $<HTMLLabelElement>('browserControlChromePathRow')
+const browserControlChromePathHint = $<HTMLDivElement>('browserControlChromePathHint')
 // CDP 模式的强确认是否已在"本次渲染进程会话"内出现过——见 Save 处的兜底守卫注释。
 let cdpModeConfirmedThisSession = false
 
 function syncBrowserControlModeRow(): void {
-  browserControlModeRow.style.display = browserControlEnabled.checked ? '' : 'none'
+  const show = browserControlEnabled.checked ? '' : 'none'
+  browserControlModeRow.style.display = show
+  browserControlChromePathRow.style.display = show
+  browserControlChromePathHint.style.display = show
 }
 browserControlEnabled.addEventListener('change', () => {
   syncBrowserControlModeRow()
@@ -192,7 +198,11 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         baseURL: firecrawlBaseURL.value.trim() || undefined
       },
       desktopControl: { enabled: desktopControlEnabled.checked },
-      browserControl: { enabled: browserControlEnabled.checked, mode: browserControlMode.value as 'isolated' | 'cdp' }
+      browserControl: {
+        enabled: browserControlEnabled.checked,
+        mode: browserControlMode.value as 'isolated' | 'cdp',
+        chromePath: browserControlChromePath.value.trim() || undefined
+      }
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -231,6 +241,7 @@ void (async () => {
   desktopControlEnabled.checked = snap.settings.desktopControl.enabled
   browserControlEnabled.checked = snap.settings.browserControl.enabled
   browserControlMode.value = snap.settings.browserControl.mode
+  browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''
   cdpModeConfirmedThisSession = false // 从快照恢复的值(哪怕是 cdp)不算"本会话已确认过"
   syncBrowserControlModeRow()
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
