@@ -788,6 +788,69 @@ describe('createBrowserTools', () => {
     await tools.find((t) => t.name === 'browser_close')!.run({}, ctx)
     expect(control.close).toHaveBeenCalledTimes(1)
   })
+
+  it('browser_click:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ click: vi.fn(async () => ({ ok: false, error: '未找到元素' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_click')!
+    const r = await tool.run({ text: '登录' }, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('未找到元素')
+  })
+
+  it('browser_fill_text:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ fillText: vi.fn(async () => ({ ok: false, error: '找不到输入框' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_fill_text')!
+    const r = await tool.run({ text: '用户名', value: 'alice' }, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('找不到输入框')
+  })
+
+  it('browser_read_text:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ readText: vi.fn(async () => ({ ok: false, error: '页面未加载' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_read_text')!
+    const r = await tool.run({}, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('页面未加载')
+  })
+
+  it('browser_screenshot:失败 → 返回纯字符串错误(不带 images)', async () => {
+    const control = fakeControl({ screenshot: vi.fn(async () => ({ ok: false, error: '截图失败原因' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_screenshot')!
+    const r = await tool.run({}, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('截图失败原因')
+  })
+
+  it('browser_scroll:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ scroll: vi.fn(async () => ({ ok: false, error: '滚动出错' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_scroll')!
+    const r = await tool.run({ direction: 'down' }, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('滚动出错')
+  })
+
+  it('browser_list_tabs:空列表 → 提示当前没有打开的标签页', async () => {
+    const control = fakeControl({ listTabs: vi.fn(async () => ({ ok: true, tabs: [] })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_list_tabs')!
+    const r = await tool.run({}, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('当前没有打开的标签页')
+  })
+
+  it('browser_open_tab:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ openTab: vi.fn(async () => ({ ok: false, error: '新开标签页出错' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_open_tab')!
+    const r = await tool.run({}, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('新开标签页出错')
+  })
+
+  it('browser_switch_tab:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ switchTab: vi.fn(async () => ({ ok: false, error: '标签页序号越界' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_switch_tab')!
+    const r = await tool.run({ index: 9 }, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('标签页序号越界')
+  })
+
+  it('browser_close:失败 → 报错文案里带 error', async () => {
+    const control = fakeControl({ close: vi.fn(async () => ({ ok: false, error: '关闭出错' })) })
+    const tool = createBrowserTools({ control }).find((t) => t.name === 'browser_close')!
+    const r = await tool.run({}, ctx)
+    expect(typeof r === 'string' ? r : r.content).toContain('关闭出错')
+  })
 })
 ```
 
