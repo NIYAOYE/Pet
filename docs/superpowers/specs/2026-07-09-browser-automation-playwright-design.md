@@ -49,7 +49,7 @@ DOM/可访问性树按**文字/角色**定位元素,不需要模型猜坐标,对
 
 ### 2.2 CDP 接管模式(可选,风险更高)
 
-`playwright-core` 的 `chromium.connectOverCDP('http://localhost:<port>')` 连上用户**已经用**
+`playwright-core` 的 `chromium.connectOverCDP('http://127.0.0.1:<port>')` 连上用户**已经用**
 `--remote-debugging-port=<port>` 启动的真实 Chrome/Edge:
 - 能操作用户真实登录的账号/会话——风险明显高于独立实例模式(可能被诱导在已登录网站上做误操作)。
 - 连接失败(目标浏览器没带调试参数在跑)时,**不自动帮用户关闭重启**——给出清晰报错 + 手动操作指引

@@ -177,12 +177,12 @@ describe('resolveLaunchPlan', () => {
 
   it('mode:cdp 未传端口 → 用默认端口 9222 拼出 endpoint', () => {
     const plan = resolveLaunchPlan({ mode: 'cdp' }, {})
-    expect(plan).toEqual({ kind: 'cdp', endpointURL: `http://localhost:${DEFAULT_CDP_PORT}` })
+    expect(plan).toEqual({ kind: 'cdp', endpointURL: `http://127.0.0.1:${DEFAULT_CDP_PORT}` })
   })
 
   it('mode:cdp 传自定义端口 → 拼进 endpoint', () => {
     const plan = resolveLaunchPlan({ mode: 'cdp' }, { cdpPort: 9333 })
-    expect(plan).toEqual({ kind: 'cdp', endpointURL: 'http://localhost:9333' })
+    expect(plan).toEqual({ kind: 'cdp', endpointURL: 'http://127.0.0.1:9333' })
   })
 })
 ```
@@ -209,7 +209,7 @@ export function resolveLaunchPlan(
 ): LaunchPlan {
   if (settings.mode === 'cdp') {
     const port = opts.cdpPort ?? DEFAULT_CDP_PORT
-    return { kind: 'cdp', endpointURL: `http://localhost:${port}` }
+    return { kind: 'cdp', endpointURL: `http://127.0.0.1:${port}` }
   }
   return { kind: 'isolated', channel: 'chrome', headless: false }
 }

@@ -22,13 +22,16 @@ describe('resolveLaunchPlan', () => {
     expect(plan).toEqual({ kind: 'isolated', channel: 'chrome', headless: false })
   })
 
-  it('mode:cdp 未传端口 → 用默认端口 9222 拼出 endpoint', () => {
+  it('mode:cdp 未传端口 → 用默认端口 9222,endpoint 用 127.0.0.1 而不是 localhost', () => {
+    // 用 localhost 会被 Windows 的 DNS 解析成 ::1(IPv6 环回),而 Chrome 的
+    // --remote-debugging-port 默认只监听 127.0.0.1(IPv4),真机复现过 connectOverCDP
+    // 报 "connect EACCES ::1:9222" —— 显式用 127.0.0.1 绕开这个解析歧义。
     const plan = resolveLaunchPlan({ mode: 'cdp' }, {})
-    expect(plan).toEqual({ kind: 'cdp', endpointURL: `http://localhost:${DEFAULT_CDP_PORT}` })
+    expect(plan).toEqual({ kind: 'cdp', endpointURL: `http://127.0.0.1:${DEFAULT_CDP_PORT}` })
   })
 
-  it('mode:cdp 传自定义端口 → 拼进 endpoint', () => {
+  it('mode:cdp 传自定义端口 → 拼进 endpoint,同样用 127.0.0.1', () => {
     const plan = resolveLaunchPlan({ mode: 'cdp' }, { cdpPort: 9333 })
-    expect(plan).toEqual({ kind: 'cdp', endpointURL: 'http://localhost:9333' })
+    expect(plan).toEqual({ kind: 'cdp', endpointURL: 'http://127.0.0.1:9333' })
   })
 })

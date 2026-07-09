@@ -12,7 +12,10 @@ export function resolveLaunchPlan(
 ): LaunchPlan {
   if (settings.mode === 'cdp') {
     const port = opts.cdpPort ?? DEFAULT_CDP_PORT
-    return { kind: 'cdp', endpointURL: `http://localhost:${port}` }
+    // 显式用 127.0.0.1 而不是 localhost:Windows 上 localhost 常被解析成 ::1(IPv6 环回),
+    // 而 Chrome --remote-debugging-port 默认只监听 127.0.0.1(IPv4),会导致
+    // connectOverCDP 报 "connect EACCES ::1:<port>"(真机复现过)。
+    return { kind: 'cdp', endpointURL: `http://127.0.0.1:${port}` }
   }
   const chromePath = settings.chromePath?.trim()
   return {
