@@ -15,7 +15,7 @@ export interface ToolUse { id: string; name: string; input: unknown }
 export type StreamChunk =
   | { type: 'text'; text: string }
   | { type: 'tool_use'; toolUse: ToolUse }
-  | { type: 'done' }
+  | { type: 'done'; finishReason?: string }
   | { type: 'error'; message: string }
 
 /**

@@ -20,7 +20,7 @@ describe('normalizeOpenAiChunks', () => {
     expect(chunks).toEqual([
       { type: 'text', text: '你好' },
       { type: 'text', text: '呀' },
-      { type: 'done' }
+      { type: 'done', finishReason: 'stop' }
     ])
   })
 
@@ -33,7 +33,7 @@ describe('normalizeOpenAiChunks', () => {
     ])))
     expect(chunks).toEqual([
       { type: 'tool_use', toolUse: { id: 'call_1', name: 'web_search', input: { query: 'AI 新闻' } } },
-      { type: 'done' }
+      { type: 'done', finishReason: 'tool_calls' }
     ])
   })
 
@@ -70,5 +70,12 @@ describe('normalizeOpenAiChunks', () => {
     ])))
     expect(chunks[0].type).toBe('tool_use')
     expect((chunks[0] as { toolUse: { name: string } }).toolUse.name).toBe('type_text')
+  })
+
+  it('finish_reason 透传到末尾的 done chunk(供 agentLoop 区分截断与正常收尾)', async () => {
+    const chunks = await collect(normalizeOpenAiChunks(feed([
+      { choices: [{ delta: {}, finish_reason: 'length' }] }
+    ])))
+    expect(chunks).toEqual([{ type: 'done', finishReason: 'length' }])
   })
 })
