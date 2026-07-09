@@ -300,7 +300,15 @@ export function startShell(): void {
         pythonExe: join(ttsPackageRoot, 'python', 'python.exe'),
         packageRoot: ttsPackageRoot,
         spawn: (exe, args, o) => spawn(exe, args, { ...o, windowsHide: true }) as unknown as import('../providers/tts/ttsClient').SpawnedProcess,
-        createWebSocket: (url) => new WebSocket(url) as unknown as import('../providers/tts/ttsClient').MinimalWebSocket,
+        createWebSocket: (url) => {
+          // ws 默认 binaryType='nodebuffer',会把二进制帧交付成 Node Buffer 而非
+          // ArrayBuffer,导致 protocol.ts 的 isBinaryMessage(instanceof ArrayBuffer)
+          // 对真实音频帧永远判 false、音频被静默丢弃。显式设为 'arraybuffer' 让 ws
+          // 端到端交付真正的 ArrayBuffer。
+          const socket = new WebSocket(url)
+          socket.binaryType = 'arraybuffer'
+          return socket as unknown as import('../providers/tts/ttsClient').MinimalWebSocket
+        },
         onEvent: (event) => {
           if (event.type === 'audio_start') petWin.webContents.send(IPC.TTS_AUDIO_START, { id: event.id, sampleRate: event.sampleRate })
           else if (event.type === 'done') petWin.webContents.send(IPC.TTS_AUDIO_DONE, event.id)

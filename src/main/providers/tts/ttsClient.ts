@@ -4,7 +4,7 @@
 import type { TtsLanguage } from '@shared/llm'
 import {
   type ClientMessage, type ReadyEvent, type ServerEvent,
-  isBinaryMessage, parseServerEvent
+  isBinaryMessage, parseServerEvent, toArrayBuffer
 } from './protocol'
 import { createSentenceBuffer, type SentenceBuffer } from './sentenceBuffer'
 
@@ -24,6 +24,11 @@ export interface MinimalWebSocket {
   onmessage: ((ev: { data: unknown }) => void) | null
   onerror: (() => void) | null
   onclose: (() => void) | null
+  /** 可选:真实 ws 实例上存在,默认 'nodebuffer'。调用方应在构造时把它设为
+   *  'arraybuffer',否则二进制帧会以 Node Buffer 形式交付,见 protocol.ts 的
+   *  isBinaryMessage/toArrayBuffer 注释。仅用于文档化该字段,创建处仍在真实
+   *  WebSocket 类型上赋值。 */
+  binaryType?: string
 }
 
 const WS_OPEN = 1
@@ -84,7 +89,7 @@ export function createTtsClient(opts: TtsClientOptions): TtsClient {
 
   function handleMessage(data: unknown): void {
     if (isBinaryMessage(data)) {
-      if (activeId) opts.onAudio?.(activeId, data, currentSampleRate)
+      if (activeId) opts.onAudio?.(activeId, toArrayBuffer(data), currentSampleRate)
       return
     }
     if (typeof data !== 'string') return

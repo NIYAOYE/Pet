@@ -34,8 +34,27 @@ export type ServerEvent =
   | ReferenceReadyEvent
   | ErrorEvent
 
-export function isBinaryMessage(data: unknown): data is ArrayBuffer {
-  return data instanceof ArrayBuffer
+/** 判断一条 WebSocket 消息是否为二进制音频帧。
+ *
+ *  真实的 `ws` 库默认 `binaryType='nodebuffer'`,此时二进制帧交付到
+ *  `onmessage` 的 `event.data` 是 Node `Buffer`(`ArrayBufferView` 的子类),
+ *  不是 `ArrayBuffer`——调用方(shell/index.ts)已把 `binaryType` 显式设为
+ *  `'arraybuffer'` 来避免这种情况,但这里仍额外接受 `ArrayBuffer.isView(data)`
+ *  作为防御性兜底,避免未来任何一处 WebSocket 构造遗漏该设置时音频被再次
+ *  静默丢弃。命中后应配合 `toArrayBuffer()` 归一化为真正的 `ArrayBuffer`。 */
+export function isBinaryMessage(data: unknown): data is ArrayBuffer | ArrayBufferView {
+  return data instanceof ArrayBuffer || ArrayBuffer.isView(data)
+}
+
+/** 把 `isBinaryMessage` 判定为二进制的数据归一化成真正的 `ArrayBuffer`。
+ *  对 `ArrayBufferView`(如 Node `Buffer`)必须按 `byteOffset`/`byteLength`
+ *  截取,而不能直接取 `.buffer`——Node 的 `Buffer` 常从共享内存池分配,
+ *  `.buffer` 可能比这一帧本身大得多,直接使用会带上池里的无关字节。 */
+export function toArrayBuffer(data: ArrayBuffer | ArrayBufferView): ArrayBuffer {
+  if (data instanceof ArrayBuffer) return data
+  const view = data as ArrayBufferView
+  const src = view.buffer as ArrayBuffer
+  return src.slice(view.byteOffset, view.byteOffset + view.byteLength)
 }
 
 export function parseServerEvent(raw: string): ServerEvent {

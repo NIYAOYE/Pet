@@ -130,6 +130,25 @@ describe('createTtsClient', () => {
     expect(audioCalls).toEqual([{ id: 'r1', sampleRate: 32000 }])
   })
 
+  it('onAudio 收到 Buffer 二进制帧(模拟真实 ws 默认 binaryType=nodebuffer 时的交付类型,不应被静默丢弃)', async () => {
+    const child = fakeChild()
+    const ws = fakeWebSocket()
+    const audioCalls: Array<{ id: string; sampleRate: number; bytes: number[] }> = []
+    const client = createTtsClient({
+      pythonExe: 'python.exe', packageRoot: 'C:\\pkg',
+      spawn: () => child, createWebSocket: () => ws,
+      onAudio: (id, pcm, sampleRate) => audioCalls.push({ id, sampleRate, bytes: Array.from(new Uint8Array(pcm)) })
+    })
+    const p = client.start()
+    child.emitStdout(readyLine)
+    queueMicrotask(() => ws.onopen?.())
+    await p
+    client.begin('r1', 'zh')
+    ws.emitMessage(JSON.stringify({ type: 'audio_start', id: 'r1', sampleRate: 32000, channels: 1, format: 'pcm_s16le' }))
+    ws.emitMessage(Buffer.from([1, 2, 3, 4, 5, 6, 7, 8]))
+    expect(audioCalls).toEqual([{ id: 'r1', sampleRate: 32000, bytes: [1, 2, 3, 4, 5, 6, 7, 8] }])
+  })
+
   it('close():关闭 WebSocket 并 kill 子进程', async () => {
     const child = fakeChild()
     const ws = fakeWebSocket()
