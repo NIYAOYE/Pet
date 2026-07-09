@@ -143,11 +143,14 @@ describe('createBrowserControl', () => {
     expect((p1.clickByText as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('y')
   })
 
-  it('switchTab 传越界 index → ok:false', async () => {
-    const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([fakePage()])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
+  it('switchTab 传越界 index → ok:false,且不破坏当前活动标签页', async () => {
+    const page = fakePage()
+    const control = createBrowserControl({ driverFactory: fakeFactory(fakeBrowser([page])), getSettings: () => ({ enabled: true, mode: 'isolated' }) })
     await control.navigate('https://a.com')
     const r = await control.switchTab({ index: 9 })
     expect(r.ok).toBe(false)
+    await control.click({ text: 'y' })
+    expect((page.clickByText as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('y')
   })
 
   it('close:关闭浏览器,之后任何调用都报"浏览器已关闭"且能重新懒启动', async () => {
