@@ -48,9 +48,53 @@ export type BrowserControlMode = 'isolated' | 'cdp'
  *  (只做存在性检查,不检查是否真的能启动)。留空则维持原有自动探测行为。 */
 export interface BrowserControlSettings { enabled: boolean; mode: BrowserControlMode; chromePath?: string }
 
-export const SETTINGS_SCHEMA_VERSION = 8
+export type TtsDevice = 'auto' | 'cuda' | 'cpu'
+export type TtsTargetLanguage = 'auto' | 'zh' | 'ja' | 'en'
+export type TtsPlaybackTrigger = 'batch' | 'stream'
+export type TtsSynthesisChunking = 'token' | 'sentence'
 
-export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings }
+export interface TtsSettings {
+  enabled: boolean
+  /** 语音运行时(可移植 Python + 依赖)安装位置;空字符串 = 未配置 */
+  runtimeInstallPath: string
+  device: TtsDevice
+  useFlashAttn: boolean
+  targetLanguage: TtsTargetLanguage
+  playbackTrigger: TtsPlaybackTrigger
+  synthesisChunking: TtsSynthesisChunking
+  isCutText: boolean
+  cutMinLen: number
+  cutMute: number
+  speed: number
+  noiseScale: number
+  temperature: number
+  topK: number
+  topP: number
+  repetitionPenalty: number
+}
+
+export const DEFAULT_TTS_SETTINGS: TtsSettings = {
+  enabled: false,
+  runtimeInstallPath: '',
+  device: 'auto',
+  useFlashAttn: false,
+  targetLanguage: 'auto',
+  playbackTrigger: 'batch',
+  synthesisChunking: 'sentence',
+  isCutText: true,
+  cutMinLen: 10,
+  cutMute: 0.3,
+  speed: 1,
+  noiseScale: 0.5,
+  temperature: 1,
+  topK: 15,
+  topP: 1,
+  repetitionPenalty: 1.35
+}
+
+export const SETTINGS_SCHEMA_VERSION = 9
+
+export interface AppSettings { schemaVersion: number; activePetId: string; provider: ProviderSettings; search: SearchSettings; memory: MemorySettings; textTools: TextToolsSettings; firecrawl: FirecrawlSettings; desktopControl: DesktopControlSettings; browserControl: BrowserControlSettings; tts: TtsSettings }
 
 export const DEFAULT_SETTINGS: AppSettings = {
   schemaVersion: SETTINGS_SCHEMA_VERSION,
@@ -61,7 +105,8 @@ export const DEFAULT_SETTINGS: AppSettings = {
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
-  browserControl: { enabled: false, mode: 'isolated' }
+  browserControl: { enabled: false, mode: 'isolated' },
+  tts: DEFAULT_TTS_SETTINGS
 }
 
 export interface Preset {
