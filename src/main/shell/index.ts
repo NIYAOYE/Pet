@@ -369,7 +369,12 @@ export function startShell(): void {
       dialog.window()?.webContents.send(IPC.CHAT_ERROR, m)
       bubbleHasContent = true; refreshBubble(); bubble.pushError(m)
     },
-    openSettings: () => openSettings()
+    openSettings: () => openSettings(),
+    voice: {
+      getSettings: () => loadSettings(settingsFile).tts,
+      speak: (text) => voiceProviderInstance?.speak(text),
+      stop: () => voiceProviderInstance?.stop()
+    }
   })
 
   const todoPanelHtml = join(dirname, '../renderer/todoPanel.html')

@@ -378,3 +378,99 @@ describe('MVP-08 runQuickAction', () => {
     expect(seen[0].tools).toBeUndefined()
   })
 })
+
+describe('语音接线', () => {
+  it('batch 模式:回复完整生成后调用一次 voice.speak(完整文本)', async () => {
+    const seen: StreamChatRequest[] = []
+    const spoken: string[] = []
+    const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
+    let done: () => void = () => {}
+    const finished = new Promise<void>((r) => { done = r })
+    const store = createChatStore({
+      petDir: join(dir, 'no-pet'),
+      skills: { list: () => [], body: () => null },
+      memory,
+      todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
+      loadSettings: () => settings,
+      getKey: () => 'k',
+      getSearchKey: () => null,
+      getFirecrawlKey: () => null,
+      makeProvider: () => recording(createFakeProvider({ reply: '你好呀' }), seen),
+      prepareImages: () => [],
+      clipboard: { readText: () => '', writeText: () => {} },
+      emitPetEvent: () => {},
+      pushUpdate: () => {},
+      pushStream: () => {},
+      pushStatus: () => {},
+      pushDone: () => done(),
+      pushError: () => done(),
+      openSettings: () => {},
+      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'batch' }), speak: (t) => spoken.push(t), stop: () => {} }
+    })
+    store.handleSend({ text: '你好' })
+    await finished
+    expect(spoken).toEqual(['你好呀'])
+  })
+
+  it('stream 模式:每凑齐一个完整句子就调用一次 voice.speak', async () => {
+    const seen: StreamChatRequest[] = []
+    const spoken: string[] = []
+    const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
+    let done: () => void = () => {}
+    const finished = new Promise<void>((r) => { done = r })
+    const provider = createFakeProvider({ script: [[{ type: 'text', text: '第一句。第二句!' }, { type: 'text', text: '第三句剩余' }, { type: 'done' }]] })
+    const store = createChatStore({
+      petDir: join(dir, 'no-pet'),
+      skills: { list: () => [], body: () => null },
+      memory,
+      todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
+      loadSettings: () => settings,
+      getKey: () => 'k',
+      getSearchKey: () => null,
+      getFirecrawlKey: () => null,
+      makeProvider: () => recording(provider, seen),
+      prepareImages: () => [],
+      clipboard: { readText: () => '', writeText: () => {} },
+      emitPetEvent: () => {},
+      pushUpdate: () => {},
+      pushStream: () => {},
+      pushStatus: () => {},
+      pushDone: () => done(),
+      pushError: () => done(),
+      openSettings: () => {},
+      voice: { getSettings: () => ({ ...settings.tts, playbackTrigger: 'stream' }), speak: (t) => spoken.push(t), stop: () => {} }
+    })
+    store.handleSend({ text: '你好' })
+    await finished
+    expect(spoken).toEqual(['第一句。', '第二句!', '第三句剩余'])
+  })
+
+  it('取消(cancel)时调用 voice.stop()', () => {
+    const memory = createMemoryManager({ dir: join(dir, 'memory'), getEmbedder: () => null })
+    const stopped: boolean[] = []
+    const store = createChatStore({
+      petDir: join(dir, 'no-pet'),
+      skills: { list: () => [], body: () => null },
+      memory,
+      todoStore: { list: () => [], add: () => ({} as never), toggleDone: () => null, remove: () => false, markFired: () => {}, onChange: () => () => {} } as unknown as TodoStore,
+      loadSettings: () => settings,
+      getKey: () => 'k',
+      getSearchKey: () => null,
+      getFirecrawlKey: () => null,
+      makeProvider: () => createFakeProvider({ reply: 'x', delayMs: 1000 }),
+      prepareImages: () => [],
+      clipboard: { readText: () => '', writeText: () => {} },
+      emitPetEvent: () => {},
+      pushUpdate: () => {},
+      pushStream: () => {},
+      pushStatus: () => {},
+      pushDone: () => {},
+      pushError: () => {},
+      openSettings: () => {},
+      voice: { getSettings: () => settings.tts, speak: () => {}, stop: () => stopped.push(true) }
+    })
+    store.handleSend({ text: '你好' })
+    store.cancel()
+    expect(stopped).toEqual([true])
+  })
+})

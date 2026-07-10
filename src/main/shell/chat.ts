@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatSendPayload, ChatSendAttachment } from '@shared/ipc'
-import type { AppSettings, ProviderSettings, ImagePart } from '@shared/llm'
+import type { AppSettings, ProviderSettings, ImagePart, TtsSettings } from '@shared/llm'
 import type { PetEvent } from '@shared/petBrain'
+import { createSentenceSplitter } from '../voice/sentenceSplitter'
 import { loadPersona } from '../persona/personaLoader'
 import { assemblePrompt } from '../agent/promptAssembler'
 import { runAgent } from '../agent/agentLoop'
@@ -79,12 +80,14 @@ export function createChatStore(opts: {
   pushDone: () => void
   pushError: (message: string) => void
   openSettings: () => void
+  /** 语音(GSV-TTS-Lite)朗读接线;未注入则该功能整体不存在,与 settings.tts.enabled 无关(同 desktopControl 的注入式惯例) */
+  voice?: { getSettings: () => TtsSettings; speak: (text: string) => void; stop: () => void }
 }): ChatStore {
   const make = opts.makeProvider ?? createProvider
   let inFlight: AbortController | null = null
 
   function cancel(): void {
-    if (inFlight) { inFlight.abort(); inFlight = null }
+    if (inFlight) { inFlight.abort(); inFlight = null; opts.voice?.stop() }
   }
 
   return {
@@ -219,6 +222,7 @@ export function createChatStore(opts: {
       const ctrl = new AbortController()
       inFlight = ctrl
       let acc = ''
+      const sentenceSplitter = createSentenceSplitter()
       void (async () => {
         // 召回在 runAgent 之前;recall 永不抛(内部退化),取消则直接放弃
         const recalled = await opts.memory.recall(text, ctrl.signal)
@@ -248,7 +252,13 @@ export function createChatStore(opts: {
           maxOutputTokens: needsBiggerBudget ? DESKTOP_CONTROL_MAX_OUTPUT_TOKENS : MAX_OUTPUT_TOKENS,
           timeoutMs: TIMEOUT_MS,
           signal: ctrl.signal,
-          onText: (t) => { acc += t; opts.pushStream(t) },
+          onText: (t) => {
+            acc += t
+            opts.pushStream(t)
+            if (opts.voice && opts.voice.getSettings().playbackTrigger === 'stream') {
+              for (const sentence of sentenceSplitter.push(t)) opts.voice.speak(sentence)
+            }
+          },
           onStatus: (t) => opts.pushStatus(t)
         })
         if (inFlight === ctrl) inFlight = null
@@ -264,6 +274,14 @@ export function createChatStore(opts: {
           opts.pushUpdate(opts.memory.messages())
           opts.pushDone()
           opts.emitPetEvent('replyDone')
+          if (opts.voice) {
+            const vs = opts.voice.getSettings()
+            if (vs.playbackTrigger === 'batch') opts.voice.speak(acc)
+            else {
+              const rest = sentenceSplitter.flush()
+              if (rest) opts.voice.speak(rest)
+            }
+          }
         }
         // 回复收尾后检查滚动摘要(异步后台,不阻塞下一条)
         opts.memory.maybeSummarize(() => {
