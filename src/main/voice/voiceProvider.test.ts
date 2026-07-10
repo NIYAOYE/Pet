@@ -106,4 +106,43 @@ describe('createVoiceProvider', () => {
     await p
     expect((capturedSignal as AbortSignal | null)?.aborted).toBe(true)
   })
+
+  it('stream 模式下两句重叠合成时,stop() 必须 abort 全部在途请求(而非仅最后一个)', async () => {
+    // 模拟 chat.ts 在 stream 模式下不等待前一句 speak() 完成就触发下一句:
+    // 句子 A 的 sidecar.speak 尚未 resolve 时,句子 B 的 speak() 就已开始 —— 两者在
+    // stop() 被调用的那一刻都必须仍处于「在途」状态(测试期间都不 resolve),
+    // 才能真正复现「仅最后一个被 abort」的 bug。
+    const capturedSignals: AbortSignal[] = []
+    let releaseA: () => void = () => {}
+    let releaseB: () => void = () => {}
+    const pendingA = new Promise<void>((resolve) => { releaseA = resolve })
+    const pendingB = new Promise<void>((resolve) => { releaseB = resolve })
+
+    const sidecar = fakeSidecar({
+      speak: vi.fn(async (req: { text: string }, _onChunk, signal: AbortSignal) => {
+        capturedSignals.push(signal)
+        await (req.text === 'A' ? pendingA : pendingB) // 挂起,直到测试显式放行
+      })
+    })
+    const vp = createVoiceProvider({
+      sidecar, translator: { translate: vi.fn() },
+      getSettings: () => DEFAULT_TTS_SETTINGS,
+      onChunk: () => {}, onError: () => {}
+    })
+
+    // 两次 speak() 均不 await,且中间没有任何 await —— 与 chat.ts 的
+    // fire-and-forget 调用方式一致,保证 stop() 执行时 A、B 都仍在 inFlight 集合中。
+    const pA = vp.speak('A')
+    const pB = vp.speak('B')
+
+    vp.stop() // 此时应同时 abort A 和 B 的 controller
+
+    releaseA()
+    releaseB()
+    await pA
+    await pB
+
+    expect(capturedSignals).toHaveLength(2)
+    expect(capturedSignals.every((s) => s.aborted)).toBe(true)
+  })
 })

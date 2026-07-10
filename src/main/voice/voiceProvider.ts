@@ -15,47 +15,51 @@ export function createVoiceProvider(opts: {
   onChunk: (c: PcmChunk) => void
   onError: (message: string) => void
 }): VoiceProvider {
-  let current: AbortController | null = null
+  const inFlight = new Set<AbortController>()
 
   return {
     async speak(text: string): Promise<void> {
       if (!text.trim()) return
       const settings = opts.getSettings()
       const ctrl = new AbortController()
-      current = ctrl
-
-      let toSpeak = text
-      if (settings.targetLanguage !== 'auto' && needsTranslation(text, settings.targetLanguage)) {
-        try {
-          toSpeak = await opts.translator.translate(text, settings.targetLanguage, ctrl.signal)
-        } catch (e) {
-          opts.onError(`翻译失败,朗读已跳过本段:${String((e as Error)?.message ?? e)}`)
-          return
-        }
-      }
-      if (ctrl.signal.aborted || !toSpeak.trim()) return
+      inFlight.add(ctrl)
 
       try {
-        await opts.sidecar.speak({
-          text: toSpeak,
-          isCutText: settings.isCutText,
-          cutMinLen: settings.cutMinLen,
-          cutMute: settings.cutMute,
-          synthesisChunking: settings.synthesisChunking,
-          speed: settings.speed,
-          noiseScale: settings.noiseScale,
-          temperature: settings.temperature,
-          topK: settings.topK,
-          topP: settings.topP,
-          repetitionPenalty: settings.repetitionPenalty
-        }, opts.onChunk, ctrl.signal)
-      } catch (e) {
-        opts.onError(`语音合成失败:${String((e as Error)?.message ?? e)}`)
+        let toSpeak = text
+        if (settings.targetLanguage !== 'auto' && needsTranslation(text, settings.targetLanguage)) {
+          try {
+            toSpeak = await opts.translator.translate(text, settings.targetLanguage, ctrl.signal)
+          } catch (e) {
+            opts.onError(`翻译失败,朗读已跳过本段:${String((e as Error)?.message ?? e)}`)
+            return
+          }
+        }
+        if (ctrl.signal.aborted || !toSpeak.trim()) return
+
+        try {
+          await opts.sidecar.speak({
+            text: toSpeak,
+            isCutText: settings.isCutText,
+            cutMinLen: settings.cutMinLen,
+            cutMute: settings.cutMute,
+            synthesisChunking: settings.synthesisChunking,
+            speed: settings.speed,
+            noiseScale: settings.noiseScale,
+            temperature: settings.temperature,
+            topK: settings.topK,
+            topP: settings.topP,
+            repetitionPenalty: settings.repetitionPenalty
+          }, opts.onChunk, ctrl.signal)
+        } catch (e) {
+          opts.onError(`语音合成失败:${String((e as Error)?.message ?? e)}`)
+        }
+      } finally {
+        inFlight.delete(ctrl)
       }
     },
     stop(): void {
-      current?.abort()
-      current = null
+      for (const ctrl of inFlight) ctrl.abort()
+      inFlight.clear()
     }
   }
 }
