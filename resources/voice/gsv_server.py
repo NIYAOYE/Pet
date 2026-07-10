@@ -83,14 +83,27 @@ def main():
     global tts, REF_AUDIO, REF_TEXT
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("--port", type=int, required=True)
-    parser.add_argument("--gpt-model", required=True)
-    parser.add_argument("--sovits-model", required=True)
-    parser.add_argument("--ref-audio", required=True)
-    parser.add_argument("--ref-text-file", required=True)
+    parser.add_argument("--port", type=int)
+    parser.add_argument("--gpt-model")
+    parser.add_argument("--sovits-model")
+    parser.add_argument("--ref-audio")
+    parser.add_argument("--ref-text-file")
     parser.add_argument("--device", default=None)
     parser.add_argument("--use-flash-attn", action="store_true")
+    parser.add_argument(
+        "--warm-start", action="store_true",
+        help="仅构造 TTS(触发 chinese-hubert/chinese-roberta 等基础预训练模型下载)后立即退出,"
+             "不加载 GPT/SoVITS 模型、不读参考音频文本、不起 HTTP 服务——安装阶段用来\"预热\"模型缓存。"
+    )
     args = parser.parse_args()
+
+    if args.warm_start:
+        TTS(use_bert=True, device=args.device, use_flash_attn=args.use_flash_attn)
+        print("READY", flush=True)
+        return
+
+    if not (args.port and args.gpt_model and args.sovits_model and args.ref_audio and args.ref_text_file):
+        parser.error("--port/--gpt-model/--sovits-model/--ref-audio/--ref-text-file 均为必填(除非传 --warm-start)")
 
     REF_AUDIO = args.ref_audio
     with open(args.ref_text_file, "r", encoding="utf-8") as f:

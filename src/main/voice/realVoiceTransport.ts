@@ -9,7 +9,30 @@ import { createSseParser, type SseFrame } from './sseParser'
 
 const execFileP = promisify(execFileCb)
 
-/** spawn gsv_server.py,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝。 */
+/** spawn 一个子进程,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝(错误信息里带上 earlyExitLabel)。 */
+function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string): { kill(): void; waitReady(): Promise<void> } {
+  const child = spawn(pythonExe, args, { windowsHide: true })
+
+  return {
+    kill(): void { child.kill() },
+    waitReady(): Promise<void> {
+      return new Promise((resolve, reject) => {
+        let settled = false
+        child.stdout?.on('data', (buf: Buffer) => {
+          if (!settled && buf.toString('utf-8').includes('READY')) { settled = true; resolve() }
+        })
+        child.once('exit', (code) => {
+          if (!settled) { settled = true; reject(new Error(`${earlyExitLabel}提前退出(code=${code})`)) }
+        })
+        child.once('error', (err) => {
+          if (!settled) { settled = true; reject(err) }
+        })
+      })
+    }
+  }
+}
+
+/** spawn gsv_server.py 处理真实语音请求,绑定具体宠物的 GPT/SoVITS 模型与参考音频/文本。 */
 export function realSpawnProcess(opts: {
   pythonExe: string
   scriptPath: string
@@ -29,25 +52,21 @@ export function realSpawnProcess(opts: {
   if (opts.device !== 'auto') args.push('--device', opts.device)
   if (opts.useFlashAttn) args.push('--use-flash-attn')
 
-  const child = spawn(opts.pythonExe, args, { windowsHide: true })
+  return spawnAndWaitForReady(opts.pythonExe, args, '语音 sidecar')
+}
 
-  return {
-    kill(): void { child.kill() },
-    waitReady(): Promise<void> {
-      return new Promise((resolve, reject) => {
-        let settled = false
-        child.stdout?.on('data', (buf: Buffer) => {
-          if (!settled && buf.toString('utf-8').includes('READY')) { settled = true; resolve() }
-        })
-        child.once('exit', (code) => {
-          if (!settled) { settled = true; reject(new Error(`语音 sidecar 提前退出(code=${code})`)) }
-        })
-        child.once('error', (err) => {
-          if (!settled) { settled = true; reject(err) }
-        })
-      })
-    }
-  }
+/** spawn gsv_server.py 的 `--warm-start` 模式:只触发基础预训练模型下载,不需要真实的 GPT/SoVITS/参考音频文本。 */
+export function realSpawnWarmStart(opts: {
+  pythonExe: string
+  scriptPath: string
+  device: 'auto' | 'cuda' | 'cpu'
+  useFlashAttn: boolean
+}): { kill(): void; waitReady(): Promise<void> } {
+  const args = [opts.scriptPath, '--warm-start']
+  if (opts.device !== 'auto') args.push('--device', opts.device)
+  if (opts.useFlashAttn) args.push('--use-flash-attn')
+
+  return spawnAndWaitForReady(opts.pythonExe, args, '语音运行时预热探针')
 }
 
 /** 发 POST + 手动解析 text/event-stream 响应体(纯文本协议,不引入 ws 包)。 */

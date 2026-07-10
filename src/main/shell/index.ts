@@ -12,7 +12,7 @@ import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
 import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
 import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
 import { parseRuntimeMarker, isRuntimeUsable, serializeRuntimeMarker, VOICE_RUNTIME_MARKER_VERSION } from '../voice/runtimeMarker'
-import { realSpawnProcess, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
+import { realSpawnProcess, realSpawnWarmStart, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
 import { createProvider } from '../providers/createProvider'
 import { createScreenshotState } from '../automation/screenshotState'
 import { captureFullScreen } from '../media/fullScreenCapture'
@@ -735,12 +735,10 @@ export function startShell(): void {
           )
         },
         warmStartModels: async (dir) => {
-          // 起一次 sidecar 触发 gsv_tts 自身的基础模型下载,READY 后立即关闭
-          const probe = realSpawnProcess({
+          // 起一次探针进程(--warm-start)触发 gsv_tts 自身的基础模型下载,READY 后立即关闭
+          const probe = realSpawnWarmStart({
             pythonExe: voicePythonExe(dir),
             scriptPath: voiceScriptPath,
-            port: VOICE_PORT + 1,
-            voice: { gptModel: '__probe__', sovitsModel: '__probe__', refAudio: '__probe__', refText: '__probe__' },
             device: s.tts.device,
             useFlashAttn: false
           })
