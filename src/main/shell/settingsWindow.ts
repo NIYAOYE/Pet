@@ -1,6 +1,6 @@
 import { BrowserWindow } from 'electron'
 
-export interface SettingsController { open(): void }
+export interface SettingsController { open(): void; window(): BrowserWindow | null }
 
 export function createSettingsWindow(opts: {
   preload: string
@@ -34,6 +34,7 @@ export function createSettingsWindow(opts: {
       if (!win) win = build()
       win.show()
       win.focus()
-    }
+    },
+    window(): BrowserWindow | null { return win }
   }
 }

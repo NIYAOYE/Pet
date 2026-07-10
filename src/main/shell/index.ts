@@ -1,10 +1,18 @@
 import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, readFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createAutomationControl } from '../automation/automationControl'
+import { createVoiceSidecar } from '../voice/voiceSidecar'
+import { createVoiceProvider } from '../voice/voiceProvider'
+import { createLlmTranslator } from '../voice/translate'
+import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
+import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
+import { parseRuntimeMarker, isRuntimeUsable, serializeRuntimeMarker, VOICE_RUNTIME_MARKER_VERSION } from '../voice/runtimeMarker'
+import { realSpawnProcess, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
+import { createProvider } from '../providers/createProvider'
 import { createScreenshotState } from '../automation/screenshotState'
 import { captureFullScreen } from '../media/fullScreenCapture'
 import { createDesktopTools } from '../tools/desktopTools'
@@ -18,7 +26,10 @@ import {
   IPC,
   type WindowBounds,
   type SettingsSnapshot,
-  type TestResult
+  type TestResult,
+  type VoiceRuntimeState,
+  type VoiceArchiveResult,
+  type VoicePcmChunk
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import { loadPet, petsDir } from '../petLoader'
@@ -246,6 +257,80 @@ export function startShell(): void {
       return automationControl.click(input)
     }
   }
+
+  // ---- 语音(GSV-TTS-Lite)----
+  const VOICE_PORT = 8850
+  const voiceScriptPath = join(appRoot, 'resources/voice/gsv_server.py')
+  const voiceMarkerFile = (installPath: string): string => join(installPath, 'voice-runtime-marker.json')
+  const voicePythonExe = (installPath: string): string => join(installPath, 'python.exe')
+
+  function getVoiceRuntimeState(): VoiceRuntimeState {
+    const s = loadSettings(settingsFile)
+    const installPath = s.tts.runtimeInstallPath
+    if (!installPath || !existsSync(voiceMarkerFile(installPath))) return { installed: false, installPath }
+    const marker = parseRuntimeMarker(readFileSync(voiceMarkerFile(installPath), 'utf-8'))
+    if (!isRuntimeUsable(marker)) return { installed: false, installPath }
+    return { installed: true, installPath, gsvTtsLiteVersion: marker!.gsvTtsLiteVersion, device: marker!.device }
+  }
+
+  let voiceProviderInstance: ReturnType<typeof createVoiceProvider> | null = null
+  let voiceSidecarInstance: ReturnType<typeof createVoiceSidecar> | null = null
+
+  async function startVoiceIfConfigured(): Promise<void> {
+    const s = loadSettings(settingsFile)
+    if (!s.tts.enabled) return
+    const state = getVoiceRuntimeState()
+    if (!state.installed) return
+    let petVoice: import('@shared/petPackage').PetVoice | undefined
+    try {
+      petVoice = (await loadPet(petDir)).manifest.voice
+    } catch {
+      return
+    }
+    if (!petVoice) return
+
+    const sidecar = createVoiceSidecar({
+      port: VOICE_PORT,
+      spawnProcess: () => realSpawnProcess({
+        pythonExe: voicePythonExe(state.installPath),
+        scriptPath: voiceScriptPath,
+        port: VOICE_PORT,
+        voice: {
+          gptModel: join(petDir, petVoice!.gptModel),
+          sovitsModel: join(petDir, petVoice!.sovitsModel),
+          refAudio: join(petDir, petVoice!.refAudio),
+          refText: join(petDir, petVoice!.refText)
+        },
+        device: s.tts.device,
+        useFlashAttn: s.tts.useFlashAttn
+      }),
+      postSse: realPostSse
+    })
+    try {
+      await sidecar.start()
+    } catch (e) {
+      console.warn('[voice] sidecar 启动失败,本次运行语音功能不可用', e)
+      return
+    }
+    voiceSidecarInstance = sidecar
+
+    const translatorProvider = createProviderForVoice() // 见下方辅助函数
+    voiceProviderInstance = createVoiceProvider({
+      sidecar,
+      translator: createLlmTranslator(translatorProvider),
+      getSettings: () => loadSettings(settingsFile).tts,
+      onChunk: (c: VoicePcmChunk) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
+      onError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
+    })
+  }
+
+  function createProviderForVoice() {
+    const s = loadSettings(settingsFile)
+    const key = secrets.getKey()
+    return createProvider(s.provider, key ?? '')
+  }
+
+  void startVoiceIfConfigured()
 
   const chat = createChatStore({
     petDir,
@@ -579,6 +664,72 @@ export function startShell(): void {
     return importPetFolder(r.filePaths[0], petCatalogDirs)
   })
   ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
+
+  ipcMain.handle(IPC.VOICE_GET_STATE, async () => getVoiceRuntimeState())
+
+  ipcMain.handle(IPC.VOICE_PICK_INSTALL_PATH, async () => {
+    const r = await electronDialog.showOpenDialog({ properties: ['openDirectory', 'createDirectory'] })
+    if (r.canceled || r.filePaths.length === 0) return null
+    return r.filePaths[0]
+  })
+
+  ipcMain.on(IPC.VOICE_START_INSTALL, () => {
+    const s = loadSettings(settingsFile)
+    const destDir = s.tts.runtimeInstallPath
+    if (!destDir) { petWin.webContents.send(IPC.VOICE_INSTALL_PROGRESS, { stage: 'done', message: '请先选择安装位置' }); return }
+    const win = settings.window()
+    void runVoiceRuntimeInstall({
+      destDir,
+      device: s.tts.device,
+      steps: {
+        downloadEmbeddablePython: (dir) => realDownloadEmbeddablePython(dir, 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'),
+        enablePip: async (dir) => { await realPipInstall(dir, ['--upgrade', 'pip']) },
+        detectGpu: realDetectGpu,
+        installTorch: async (dir, useCuda) => {
+          await realPipInstall(dir, useCuda
+            ? ['torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu128']
+            : ['torch', 'torchvision', 'torchaudio'])
+        },
+        installGsvTtsLite: async (dir) => { await realPipInstall(dir, ['gsv-tts-lite']) },
+        warmStartModels: async (dir) => {
+          // 起一次 sidecar 触发 gsv_tts 自身的基础模型下载,READY 后立即关闭
+          const probe = realSpawnProcess({
+            pythonExe: voicePythonExe(dir),
+            scriptPath: voiceScriptPath,
+            port: VOICE_PORT + 1,
+            voice: { gptModel: '__probe__', sovitsModel: '__probe__', refAudio: '__probe__', refText: '__probe__' },
+            device: s.tts.device,
+            useFlashAttn: false
+          })
+          try { await probe.waitReady() } finally { probe.kill() }
+        }
+      },
+      onProgress: (p) => { win?.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p); petWin.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p) }
+    }).then((r) => {
+      if (r.ok) {
+        mkdirSync(destDir, { recursive: true })
+        writeFileSync(voiceMarkerFile(destDir), serializeRuntimeMarker({ markerVersion: VOICE_RUNTIME_MARKER_VERSION, gsvTtsLiteVersion: '0.4.6', device: s.tts.device === 'cpu' ? 'cpu' : 'cuda' }))
+      }
+    })
+  })
+
+  ipcMain.handle(IPC.VOICE_IMPORT_ARCHIVE, async (): Promise<VoiceArchiveResult> => {
+    const s = loadSettings(settingsFile)
+    if (!s.tts.runtimeInstallPath) return { ok: false, error: '请先选择安装位置' }
+    const r = await electronDialog.showOpenDialog({ properties: ['openFile'], filters: [{ name: '运行时压缩包', extensions: ['zip'] }] })
+    if (r.canceled || r.filePaths.length === 0) return { ok: false, error: '已取消' }
+    return importVoiceRuntimeArchive({ zipPath: r.filePaths[0], destDir: s.tts.runtimeInstallPath, io: createAdmZipArchiveIO() })
+  })
+
+  ipcMain.handle(IPC.VOICE_EXPORT_ARCHIVE, async (): Promise<VoiceArchiveResult> => {
+    const s = loadSettings(settingsFile)
+    if (!s.tts.runtimeInstallPath) return { ok: false, error: '尚未安装,无法导出' }
+    const r = await electronDialog.showSaveDialog({ defaultPath: 'voice-runtime.zip', filters: [{ name: '运行时压缩包', extensions: ['zip'] }] })
+    if (r.canceled || !r.filePath) return { ok: false, error: '已取消' }
+    return exportVoiceRuntimeArchive({ srcDir: s.tts.runtimeInstallPath, zipPath: r.filePath, io: createAdmZipArchiveIO() })
+  })
+
+  ipcMain.on(IPC.VOICE_STOP, () => voiceProviderInstance?.stop())
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, raw) => {
     const collapsed = validateBool(raw)
     if (collapsed === null) return
@@ -620,5 +771,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close(); voiceSidecarInstance?.stop() })
 }
