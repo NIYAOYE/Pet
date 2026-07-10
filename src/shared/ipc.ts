@@ -59,7 +59,18 @@ export const IPC = {
   BUBBLE_LINE: 'bubble:line',
   BUBBLE_RESIZE: 'bubble:resize',
   PET_SPEAK: 'pet:speak',
-  CONTEXT_SIGNAL: 'context:signal'
+  CONTEXT_SIGNAL: 'context:signal',
+  VOICE_GET_STATE: 'voice:get-state',
+  VOICE_PICK_INSTALL_PATH: 'voice:pick-install-path',
+  VOICE_START_INSTALL: 'voice:start-install',
+  VOICE_INSTALL_PROGRESS: 'voice:install-progress',
+  VOICE_IMPORT_ARCHIVE: 'voice:import-archive',
+  VOICE_EXPORT_ARCHIVE: 'voice:export-archive',
+  VOICE_AUDIO_CHUNK: 'voice:audio-chunk',
+  VOICE_AUDIO_DONE: 'voice:audio-done',
+  VOICE_AUDIO_ERROR: 'voice:audio-error',
+  VOICE_STOP: 'voice:stop',
+  VOICE_PLAYBACK_STOP: 'voice:playback-stop'
 } as const
 
 /** 主进程情境信号(main→renderer 推送):AFK 离开 / 久坐提醒，均为一次性边沿事件 */
@@ -185,8 +196,29 @@ export interface BubbleApi {
   reportSize(height: number): void
 }
 
+export interface VoiceRuntimeState { installed: boolean; installPath: string; gsvTtsLiteVersion?: string; device?: 'cuda' | 'cpu' }
+export interface VoiceInstallProgress { stage: string; message: string }
+export interface VoiceArchiveResult { ok: boolean; error?: string }
+export interface VoicePcmChunk { audioBase64: string; sampleRate: number }
+
+export interface VoiceApi {
+  getState(): Promise<VoiceRuntimeState>
+  pickInstallPath(): Promise<string | null>
+  startInstall(): void
+  onInstallProgress(cb: (p: VoiceInstallProgress) => void): void
+  importArchive(): Promise<VoiceArchiveResult>
+  exportArchive(): Promise<VoiceArchiveResult>
+  onAudioChunk(cb: (c: VoicePcmChunk) => void): void
+  onAudioDone(cb: () => void): void
+  onAudioError(cb: (message: string) => void): void
+  /** main→renderer 推送:立即停止渲染层已在播放的语音(用户显式取消/发送新消息触发),
+   *  不携带任何 petBrain 状态含义——与 onAudioDone(正常播放完毕)、onAudioError(出错)语义不同 */
+  onPlaybackStop(cb: () => void): void
+  stop(): void
+}
+
 declare global {
-  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi }
+  interface Window { petApi: PetApi; chatApi: ChatApi; settingsApi: SettingsApi; mediaApi: MediaApi; overlayApi: OverlayApi; todoApi: TodoApi; bubbleApi: BubbleApi; voiceApi: VoiceApi }
 }
 
 export type { PetEvent, Bounds }

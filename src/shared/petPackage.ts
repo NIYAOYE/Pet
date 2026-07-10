@@ -1,8 +1,10 @@
 export interface PetSheet { rows: number; cols: number; cellWidth: number; cellHeight: number }
 export interface PetAnimation { row: number; frames: number; fps: number; loop: boolean; durations?: number[] }
+export interface PetVoice { gptModel: string; sovitsModel: string; refAudio: string; refText: string }
 export interface PetManifest {
   id: string; displayName: string; description: string; spritesheetPath: string
   sheet: PetSheet; animations: Record<string, PetAnimation>
+  voice?: PetVoice
 }
 export interface FrameRect { x: number; y: number; w: number; h: number }
 
@@ -39,6 +41,13 @@ export function parsePetManifest(raw: unknown): PetManifest {
       assert(typeof a[k] === 'number', `animation ${key}.${k} must be a number`)
     }
     assert(typeof a.loop === 'boolean', `animation ${key}.loop must be a boolean`)
+  }
+  if (m.voice !== undefined) {
+    const v = m.voice
+    assert(v && typeof v === 'object', 'manifest.voice must be an object when present')
+    for (const k of ['gptModel', 'sovitsModel', 'refAudio', 'refText']) {
+      assert(typeof v[k] === 'string' && v[k].length > 0, `manifest.voice.${k} must be a non-empty string`)
+    }
   }
   return m as PetManifest
 }

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { createOpenAiCompatEmbedder, createFakeEmbedder, resolveEmbeddingKey } from './embedder'
 import type { AppSettings } from '@shared/llm'
+import { DEFAULT_TTS_SETTINGS } from '@shared/llm'
 
 function jsonResponse(body: unknown, ok = true, status = 200): Response {
   return { ok, status, json: async () => body } as Response
@@ -61,7 +62,8 @@ describe('resolveEmbeddingKey', () => {
     textTools: { autoCopyResult: false },
     firecrawl: { enabled: false },
     desktopControl: { enabled: false },
-    browserControl: { enabled: false, mode: 'isolated' }
+    browserControl: { enabled: false, mode: 'isolated' },
+    tts: DEFAULT_TTS_SETTINGS
   })
   it('有独立 key 优先用', () => {
     expect(resolveEmbeddingKey(base('https://a/v1', 'https://a/v1'), 'ek', 'ck')).toBe('ek')
