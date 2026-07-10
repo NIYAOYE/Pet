@@ -9,9 +9,11 @@ import { createSseParser, type SseFrame } from './sseParser'
 
 const execFileP = promisify(execFileCb)
 
-/** spawn 一个子进程,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝(错误信息里带上 earlyExitLabel)。 */
+/** spawn 一个子进程,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝,错误信息里带上 earlyExitLabel 与 Python 侧的 stderr 尾巴(通常是 traceback)。 */
 function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string): { kill(): void; waitReady(): Promise<void> } {
   const child = spawn(pythonExe, args, { windowsHide: true })
+  let stderrTail = ''
+  child.stderr?.on('data', (buf: Buffer) => { stderrTail = (stderrTail + buf.toString('utf-8')).slice(-2000) })
 
   return {
     kill(): void { child.kill() },
@@ -22,7 +24,11 @@ function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel:
           if (!settled && buf.toString('utf-8').includes('READY')) { settled = true; resolve() }
         })
         child.once('exit', (code) => {
-          if (!settled) { settled = true; reject(new Error(`${earlyExitLabel}提前退出(code=${code})`)) }
+          if (!settled) {
+            settled = true
+            const detail = stderrTail.trim()
+            reject(new Error(`${earlyExitLabel}提前退出(code=${code})${detail ? `: ${detail}` : ''}`))
+          }
         })
         child.once('error', (err) => {
           if (!settled) { settled = true; reject(err) }
