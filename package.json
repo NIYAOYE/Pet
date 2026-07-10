@@ -14,6 +14,7 @@
     "dist": "pnpm build && electron-builder --win"
   },
   "devDependencies": {
+    "@types/adm-zip": "^0.5.8",
     "electron": "^31.0.0",
     "electron-builder": "^24.13.3",
     "electron-vite": "^2.3.0",
@@ -29,6 +30,7 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.109.1",
+    "adm-zip": "^0.5.18",
     "openai": "^6.45.0",
     "playwright-core": "^1.61.1"
   }
