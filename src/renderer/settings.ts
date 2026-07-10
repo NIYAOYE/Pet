@@ -1,4 +1,5 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, DEFAULT_TTS_SETTINGS, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking } from '@shared/llm'
+import type { VoiceRuntimeState } from '@shared/ipc'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -23,8 +24,120 @@ const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
-// tts 尚无设置页 UI 控件(见 Task 15/17/20),保存时原样透传已加载的值,避免把用户已存的语音配置清空覆盖为默认值
-let savedTts: TtsSettings = DEFAULT_TTS_SETTINGS
+
+// 语音(TTS)分节控件
+const ttsEnabled = $<HTMLInputElement>('ttsEnabled')
+const ttsRuntimeStatus = $<HTMLElement>('ttsRuntimeStatus')
+const ttsInstallPath = $<HTMLInputElement>('ttsInstallPath')
+const ttsPickPath = $<HTMLButtonElement>('ttsPickPath')
+const ttsInstall = $<HTMLButtonElement>('ttsInstall')
+const ttsImport = $<HTMLButtonElement>('ttsImport')
+const ttsExport = $<HTMLButtonElement>('ttsExport')
+const ttsInstallLog = $<HTMLPreElement>('ttsInstallLog')
+const ttsDevice = $<HTMLSelectElement>('ttsDevice')
+const ttsUseFlashAttn = $<HTMLInputElement>('ttsUseFlashAttn')
+const ttsTargetLanguage = $<HTMLSelectElement>('ttsTargetLanguage')
+const ttsPlaybackTrigger = $<HTMLSelectElement>('ttsPlaybackTrigger')
+const ttsSynthesisChunking = $<HTMLSelectElement>('ttsSynthesisChunking')
+const ttsSpeed = $<HTMLInputElement>('ttsSpeed')
+const ttsNoiseScale = $<HTMLInputElement>('ttsNoiseScale')
+const ttsTemperature = $<HTMLInputElement>('ttsTemperature')
+const ttsTopK = $<HTMLInputElement>('ttsTopK')
+const ttsTopP = $<HTMLInputElement>('ttsTopP')
+const ttsRepetitionPenalty = $<HTMLInputElement>('ttsRepetitionPenalty')
+const ttsIsCutText = $<HTMLInputElement>('ttsIsCutText')
+const ttsCutMinLen = $<HTMLInputElement>('ttsCutMinLen')
+const ttsCutMute = $<HTMLInputElement>('ttsCutMute')
+
+function formatRuntimeState(s: VoiceRuntimeState): string {
+  if (!s.installed) return '运行时状态:未安装'
+  const ver = s.gsvTtsLiteVersion ? ` · ${s.gsvTtsLiteVersion}` : ''
+  const dev = s.device ? ` · ${s.device}` : ''
+  return `运行时状态:已安装${ver}${dev}`
+}
+
+function appendInstallLog(line: string): void {
+  ttsInstallLog.style.display = ''
+  ttsInstallLog.textContent += `${line}\n`
+  ttsInstallLog.scrollTop = ttsInstallLog.scrollHeight
+}
+
+function currentTts(): TtsSettings {
+  return {
+    enabled: ttsEnabled.checked,
+    runtimeInstallPath: ttsInstallPath.value.trim(),
+    device: ttsDevice.value as TtsDevice,
+    useFlashAttn: ttsUseFlashAttn.checked,
+    targetLanguage: ttsTargetLanguage.value as TtsTargetLanguage,
+    playbackTrigger: ttsPlaybackTrigger.value as TtsPlaybackTrigger,
+    synthesisChunking: ttsSynthesisChunking.value as TtsSynthesisChunking,
+    isCutText: ttsIsCutText.checked,
+    cutMinLen: parseInt(ttsCutMinLen.value, 10) || 0,
+    cutMute: parseFloat(ttsCutMute.value) || 0,
+    speed: parseFloat(ttsSpeed.value) || 1,
+    noiseScale: parseFloat(ttsNoiseScale.value) || 0,
+    temperature: parseFloat(ttsTemperature.value) || 1,
+    topK: parseInt(ttsTopK.value, 10) || 1,
+    topP: parseFloat(ttsTopP.value) || 1,
+    repetitionPenalty: parseFloat(ttsRepetitionPenalty.value) || 1
+  }
+}
+
+function applyTts(t: TtsSettings): void {
+  ttsEnabled.checked = t.enabled
+  ttsInstallPath.value = t.runtimeInstallPath
+  ttsDevice.value = t.device
+  ttsUseFlashAttn.checked = t.useFlashAttn
+  ttsTargetLanguage.value = t.targetLanguage
+  ttsPlaybackTrigger.value = t.playbackTrigger
+  ttsSynthesisChunking.value = t.synthesisChunking
+  ttsIsCutText.checked = t.isCutText
+  ttsCutMinLen.value = String(t.cutMinLen)
+  ttsCutMute.value = String(t.cutMute)
+  ttsSpeed.value = String(t.speed)
+  ttsNoiseScale.value = String(t.noiseScale)
+  ttsTemperature.value = String(t.temperature)
+  ttsTopK.value = String(t.topK)
+  ttsTopP.value = String(t.topP)
+  ttsRepetitionPenalty.value = String(t.repetitionPenalty)
+}
+
+ttsPickPath.addEventListener('click', async () => {
+  const p = await window.voiceApi.pickInstallPath()
+  if (p) ttsInstallPath.value = p
+})
+
+ttsInstall.addEventListener('click', () => {
+  if (!ttsInstallPath.value.trim()) {
+    status.textContent = '✗ 请先选择安装位置'
+    return
+  }
+  ttsInstallLog.textContent = ''
+  appendInstallLog('开始安装…')
+  window.voiceApi.startInstall()
+})
+
+window.voiceApi.onInstallProgress((p) => {
+  appendInstallLog(`[${p.stage}] ${p.message}`)
+})
+
+ttsImport.addEventListener('click', async () => {
+  try {
+    const res = await window.voiceApi.importArchive()
+    status.textContent = res.ok ? '✓ 导入成功' : `✗ ${res.error ?? '导入失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
+
+ttsExport.addEventListener('click', async () => {
+  try {
+    const res = await window.voiceApi.exportArchive()
+    status.textContent = res.ok ? '✓ 导出成功' : `✗ ${res.error ?? '导出失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
 
 // 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('#sidenav .navitem'))
@@ -205,7 +318,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         mode: browserControlMode.value as 'isolated' | 'cdp',
         chromePath: browserControlChromePath.value.trim() || undefined
       },
-      tts: savedTts
+      tts: currentTts()
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -223,7 +336,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
-  savedTts = snap.settings.tts
+  applyTts(snap.settings.tts)
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
@@ -250,4 +363,8 @@ void (async () => {
   syncBrowserControlModeRow()
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
   showPage('model') // 默认落地页:模型 · API
+})()
+
+void (async () => {
+  ttsRuntimeStatus.textContent = formatRuntimeState(await window.voiceApi.getState())
 })()

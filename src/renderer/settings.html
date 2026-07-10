@@ -42,6 +42,7 @@
           <button class="navitem" data-page="pet" type="button">宠物</button>
           <button class="navitem" data-page="tools" type="button">工具能力</button>
           <button class="navitem" data-page="memory" type="button">记忆</button>
+          <button class="navitem" data-page="voice" type="button">语音</button>
         </nav>
         <div id="pages">
 
@@ -150,6 +151,98 @@
             <div class="row">
               <button id="openMemoryDir" class="secondary">打开记忆文件夹</button>
             </div>
+          </section>
+
+          <section class="page" data-page="voice">
+            <h2>语音(实验性)</h2>
+            <div class="hint">配音使用本地 GSV-TTS-Lite 运行时(独立 Python 环境 + 模型,体积较大),需先安装运行时才能生效。</div>
+            <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+              <input id="ttsEnabled" type="checkbox" style="width:auto" />
+              <span>启用配音(宠物回复时朗读)</span>
+            </label>
+
+            <div style="margin-top:6px;padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.04)">
+              <div id="ttsRuntimeStatus" class="hint">运行时状态:检测中…</div>
+              <label style="margin-top:8px">安装位置
+                <div class="row">
+                  <input id="ttsInstallPath" type="text" readonly placeholder="尚未选择" style="flex:1" />
+                  <button id="ttsPickPath" class="secondary" type="button">选择安装位置</button>
+                </div>
+              </label>
+              <div class="hint" style="margin-top:2px">选择安装位置后请先点击下方"保存",再进行安装/导入/导出(否则仍会使用上次保存的位置)。</div>
+              <div class="row" style="margin-top:8px">
+                <button id="ttsInstall" class="secondary" type="button">现场安装</button>
+                <button id="ttsImport" class="secondary" type="button">导入压缩包…</button>
+                <button id="ttsExport" class="secondary" type="button">导出压缩包…</button>
+              </div>
+              <pre id="ttsInstallLog" style="margin-top:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;font-size:12px;display:none"></pre>
+            </div>
+
+            <label>设备
+              <select id="ttsDevice">
+                <option value="auto">自动</option>
+                <option value="cuda">GPU(cuda)</option>
+                <option value="cpu">CPU</option>
+              </select>
+            </label>
+            <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+              <input id="ttsUseFlashAttn" type="checkbox" style="width:auto" />
+              <span>启用 Flash Attention(需自行满足 README 中 Windows wheel 安装前提)</span>
+            </label>
+            <label>目标朗读语言
+              <select id="ttsTargetLanguage">
+                <option value="auto">自动</option>
+                <option value="zh">中文</option>
+                <option value="ja">日语</option>
+                <option value="en">英语</option>
+              </select>
+            </label>
+            <label>播放触发方式
+              <select id="ttsPlaybackTrigger">
+                <option value="batch">整句合成后播放(推荐,不易卡顿)</option>
+                <option value="stream">边生成边播放(可能不流畅)</option>
+              </select>
+            </label>
+            <label>合成切分方式
+              <select id="ttsSynthesisChunking">
+                <option value="token">按 token</option>
+                <option value="sentence">按句子(推荐)</option>
+              </select>
+            </label>
+
+            <details style="margin-top:6px">
+              <summary style="cursor:pointer;opacity:0.9">生成参数(高级,默认即可)</summary>
+              <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+                <label>语速 speed(0.1 - 2)
+                  <input id="ttsSpeed" type="number" min="0.1" max="2" step="0.1" />
+                </label>
+                <label>噪声比例 noiseScale(0.1 - 1)
+                  <input id="ttsNoiseScale" type="number" min="0.1" max="1" step="0.1" />
+                </label>
+                <label>温度 temperature(0.1 - 2)
+                  <input id="ttsTemperature" type="number" min="0.1" max="2" step="0.1" />
+                </label>
+                <label>Top K(1 - 50,整数)
+                  <input id="ttsTopK" type="number" min="1" max="50" step="1" />
+                </label>
+                <label>Top P(0.1 - 1)
+                  <input id="ttsTopP" type="number" min="0.1" max="1" step="0.1" />
+                </label>
+                <label>重复惩罚 repetitionPenalty(1 - 2)
+                  <input id="ttsRepetitionPenalty" type="number" min="1" max="2" step="0.01" />
+                </label>
+                <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
+                  <input id="ttsIsCutText" type="checkbox" style="width:auto" />
+                  <span>合成前自动切分长文本</span>
+                </label>
+                <label>最小切分长度 cutMinLen(整数)
+                  <input id="ttsCutMinLen" type="number" min="1" step="1" />
+                </label>
+                <label>切分静音时长 cutMute(秒,0 - 2)
+                  <input id="ttsCutMute" type="number" min="0" max="2" step="0.1" />
+                </label>
+              </div>
+            </details>
           </section>
 
         </div>
