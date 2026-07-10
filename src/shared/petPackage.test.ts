@@ -38,3 +38,35 @@ describe('parsePetManifest', () => {
     expect(() => parsePetManifest(bad)).toThrow(/sheet/)
   })
 })
+
+describe('parsePetManifest voice 字段(可选)', () => {
+  const base = {
+    id: 'alice', displayName: 'Alice', description: 'd', spritesheetPath: 'spritesheet.webp',
+    sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+    animations: { idle: { row: 0, frames: 1, fps: 1, loop: true } }
+  }
+
+  it('缺失 voice 字段 → 解析成功,voice 为 undefined', () => {
+    const m = parsePetManifest(base)
+    expect(m.voice).toBeUndefined()
+  })
+
+  it('完整 voice 字段 → 原样保留', () => {
+    const m = parsePetManifest({
+      ...base,
+      voice: { gptModel: 'voice/a.ckpt', sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })
+    expect(m.voice).toEqual({ gptModel: 'voice/a.ckpt', sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' })
+  })
+
+  it('voice 字段存在但缺子字段 → 抛错', () => {
+    expect(() => parsePetManifest({ ...base, voice: { gptModel: 'x' } })).toThrow()
+  })
+
+  it('voice 子字段为空字符串 → 抛错', () => {
+    expect(() => parsePetManifest({
+      ...base,
+      voice: { gptModel: '', sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })).toThrow()
+  })
+})
