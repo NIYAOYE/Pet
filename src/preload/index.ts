@@ -4,7 +4,8 @@ import {
   type WindowBounds, type ChatMessage, type ChatSendPayload, type PetEvent,
   type SettingsApi, type MediaApi, type OverlayApi, type ChatSendAttachment,
   type OverlayInit, type OverlayRect, type TodoApi, type TodoItem,
-  type BubbleApi, type BubblePlace, type ContextSignalKind
+  type BubbleApi, type BubblePlace, type ContextSignalKind,
+  type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 
@@ -135,6 +136,19 @@ const bubbleApi: BubbleApi = {
   reportSize: (height: number): void => ipcRenderer.send(IPC.BUBBLE_RESIZE, height)
 }
 
+const voiceApi = {
+  getState: () => ipcRenderer.invoke(IPC.VOICE_GET_STATE),
+  pickInstallPath: () => ipcRenderer.invoke(IPC.VOICE_PICK_INSTALL_PATH),
+  startInstall: () => ipcRenderer.send(IPC.VOICE_START_INSTALL),
+  onInstallProgress: (cb: (p: VoiceInstallProgress) => void) => ipcRenderer.on(IPC.VOICE_INSTALL_PROGRESS, (_e, p) => cb(p)),
+  importArchive: () => ipcRenderer.invoke(IPC.VOICE_IMPORT_ARCHIVE),
+  exportArchive: () => ipcRenderer.invoke(IPC.VOICE_EXPORT_ARCHIVE),
+  onAudioChunk: (cb: (c: VoicePcmChunk) => void) => ipcRenderer.on(IPC.VOICE_AUDIO_CHUNK, (_e, c) => cb(c)),
+  onAudioDone: (cb: () => void) => ipcRenderer.on(IPC.VOICE_AUDIO_DONE, () => cb()),
+  onAudioError: (cb: (message: string) => void) => ipcRenderer.on(IPC.VOICE_AUDIO_ERROR, (_e, m) => cb(m)),
+  stop: () => ipcRenderer.send(IPC.VOICE_STOP)
+} satisfies VoiceApi
+
 contextBridge.exposeInMainWorld('petApi', petApi)
 contextBridge.exposeInMainWorld('chatApi', chatApi)
 contextBridge.exposeInMainWorld('settingsApi', settingsApi)
@@ -142,3 +156,4 @@ contextBridge.exposeInMainWorld('mediaApi', mediaApi)
 contextBridge.exposeInMainWorld('overlayApi', overlayApi)
 contextBridge.exposeInMainWorld('todoApi', todoApi)
 contextBridge.exposeInMainWorld('bubbleApi', bubbleApi)
+contextBridge.exposeInMainWorld('voiceApi', voiceApi)
