@@ -12,6 +12,7 @@ import sys
 import json
 import base64
 import argparse
+import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 from gsv_tts import TTS
@@ -19,6 +20,7 @@ from gsv_tts import TTS
 tts: "TTS | None" = None
 REF_AUDIO = ""
 REF_TEXT = ""
+_infer_lock = threading.Lock()
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -35,7 +37,7 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", "0"))
         try:
             body = json.loads(self.rfile.read(length) or b"{}")
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, UnicodeDecodeError):
             self.send_response(400)
             self.end_headers()
             return
@@ -47,27 +49,28 @@ class Handler(BaseHTTPRequestHandler):
 
         try:
             stream_mode = "sentence" if body.get("synthesisChunking") == "sentence" else "token"
-            for clip in tts.infer_stream(
-                spk_audio_path=REF_AUDIO,
-                prompt_audio_path=REF_AUDIO,
-                prompt_audio_text=REF_TEXT,
-                text=body["text"],
-                is_cut_text=bool(body.get("isCutText", True)),
-                cut_minlen=int(body.get("cutMinLen", 10)),
-                cut_mute=float(body.get("cutMute", 0.3)),
-                stream_mode=stream_mode,
-                top_k=int(body.get("topK", 15)),
-                top_p=float(body.get("topP", 1.0)),
-                temperature=float(body.get("temperature", 1.0)),
-                repetition_penalty=float(body.get("repetitionPenalty", 1.35)),
-                noise_scale=float(body.get("noiseScale", 0.5)),
-                speed=float(body.get("speed", 1.0)),
-                debug=False,
-            ):
-                audio_b64 = base64.b64encode(clip.audio_data.tobytes()).decode("ascii")
-                payload = json.dumps({"audio": audio_b64, "sampleRate": clip.samplerate})
-                self.wfile.write(("event: audio\ndata: %s\n\n" % payload).encode("utf-8"))
-                self.wfile.flush()
+            with _infer_lock:
+                for clip in tts.infer_stream(
+                    spk_audio_path=REF_AUDIO,
+                    prompt_audio_path=REF_AUDIO,
+                    prompt_audio_text=REF_TEXT,
+                    text=body["text"],
+                    is_cut_text=bool(body.get("isCutText", True)),
+                    cut_minlen=int(body.get("cutMinLen", 10)),
+                    cut_mute=float(body.get("cutMute", 0.3)),
+                    stream_mode=stream_mode,
+                    top_k=int(body.get("topK", 15)),
+                    top_p=float(body.get("topP", 1.0)),
+                    temperature=float(body.get("temperature", 1.0)),
+                    repetition_penalty=float(body.get("repetitionPenalty", 1.35)),
+                    noise_scale=float(body.get("noiseScale", 0.5)),
+                    speed=float(body.get("speed", 1.0)),
+                    debug=False,
+                ):
+                    audio_b64 = base64.b64encode(clip.audio_data.tobytes()).decode("ascii")
+                    payload = json.dumps({"audio": audio_b64, "sampleRate": clip.samplerate})
+                    self.wfile.write(("event: audio\ndata: %s\n\n" % payload).encode("utf-8"))
+                    self.wfile.flush()
             self.wfile.write(b"event: done\ndata: {}\n\n")
             self.wfile.flush()
         except Exception as e:
