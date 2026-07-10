@@ -7,6 +7,7 @@ import { createMemoryManager } from '../memory/memoryManager'
 import { createFakeProvider } from '../providers/fakeProvider'
 import type { LlmProvider, StreamChatRequest } from '../providers/llmProvider'
 import type { AppSettings, StreamChunk } from '@shared/llm'
+import { DEFAULT_TTS_SETTINGS } from '@shared/llm'
 import type { TodoStore } from '../todos/todoStore'
 
 const settings: AppSettings = {
@@ -18,7 +19,8 @@ const settings: AppSettings = {
   textTools: { autoCopyResult: false },
   firecrawl: { enabled: false },
   desktopControl: { enabled: false },
-  browserControl: { enabled: false, mode: 'isolated' }
+  browserControl: { enabled: false, mode: 'isolated' },
+  tts: DEFAULT_TTS_SETTINGS
 }
 
 function recording(inner: LlmProvider, seen: StreamChatRequest[]): LlmProvider {

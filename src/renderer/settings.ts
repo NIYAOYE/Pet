@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, DEFAULT_TTS_SETTINGS, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings } from '@shared/llm'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
 const preset = $<HTMLSelectElement>('preset')
@@ -23,6 +23,8 @@ const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
+// tts 尚无设置页 UI 控件(见 Task 15/17/20),保存时原样透传已加载的值,避免把用户已存的语音配置清空覆盖为默认值
+let savedTts: TtsSettings = DEFAULT_TTS_SETTINGS
 
 // 侧边栏分页:点击 navitem → 显示对应 .page,高亮当前项
 const navItems = Array.from(document.querySelectorAll<HTMLButtonElement>('#sidenav .navitem'))
@@ -202,7 +204,8 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
         enabled: browserControlEnabled.checked,
         mode: browserControlMode.value as 'isolated' | 'cdp',
         chromePath: browserControlChromePath.value.trim() || undefined
-      }
+      },
+      tts: savedTts
     })
     if (petSelect.value !== savedActivePetId) {
       savedActivePetId = petSelect.value
@@ -220,6 +223,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
+  savedTts = snap.settings.tts
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
