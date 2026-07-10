@@ -9,6 +9,7 @@ import { createVoiceSidecar } from '../voice/voiceSidecar'
 import { createVoiceProvider } from '../voice/voiceProvider'
 import { createLlmTranslator } from '../voice/translate'
 import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
+import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
 import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
 import { parseRuntimeMarker, isRuntimeUsable, serializeRuntimeMarker, VOICE_RUNTIME_MARKER_VERSION } from '../voice/runtimeMarker'
 import { realSpawnProcess, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
@@ -263,6 +264,9 @@ export function startShell(): void {
   const voiceScriptPath = join(appRoot, 'resources/voice/gsv_server.py')
   const voiceMarkerFile = (installPath: string): string => join(installPath, 'voice-runtime-marker.json')
   const voicePythonExe = (installPath: string): string => join(installPath, 'python.exe')
+  const PYPI_MIRROR_TUNA = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+  const PYTORCH_CUDA_MIRROR_ALIYUN = 'https://mirrors.aliyun.com/pytorch-wheels/cu128/'
+  const PYTORCH_CUDA_OFFICIAL = 'https://download.pytorch.org/whl/cu128'
 
   function getVoiceRuntimeState(): VoiceRuntimeState {
     const s = loadSettings(settingsFile)
@@ -691,14 +695,45 @@ export function startShell(): void {
       device: s.tts.device,
       steps: {
         downloadEmbeddablePython: (dir) => realDownloadEmbeddablePython(dir, 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'),
-        enablePip: async (dir) => { await realPipInstall(dir, ['--upgrade', 'pip']) },
-        detectGpu: realDetectGpu,
-        installTorch: async (dir, useCuda) => {
-          await realPipInstall(dir, useCuda
-            ? ['torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu128']
-            : ['torch', 'torchvision', 'torchaudio'])
+        enablePip: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['--upgrade', 'pip'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
         },
-        installGsvTtsLite: async (dir) => { await realPipInstall(dir, ['gsv-tts-lite']) },
+        detectGpu: realDetectGpu,
+        installTorch: async (dir, useCuda, onProgress) => {
+          const candidates: MirrorCandidate[] = useCuda
+            ? [
+                { indexUrl: PYTORCH_CUDA_MIRROR_ALIYUN, label: '阿里云镜像', fastFail: true },
+                { indexUrl: PYTORCH_CUDA_OFFICIAL, label: '官方源', fastFail: false }
+              ]
+            : [
+                { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+                { indexUrl: undefined, label: '官方源', fastFail: false }
+              ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['torch', 'torchvision', 'torchaudio'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
+        installGsvTtsLite: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['gsv-tts-lite'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
         warmStartModels: async (dir) => {
           // 起一次 sidecar 触发 gsv_tts 自身的基础模型下载,READY 后立即关闭
           const probe = realSpawnProcess({
@@ -717,6 +752,10 @@ export function startShell(): void {
       if (r.ok) {
         mkdirSync(destDir, { recursive: true })
         writeFileSync(voiceMarkerFile(destDir), serializeRuntimeMarker({ markerVersion: VOICE_RUNTIME_MARKER_VERSION, gsvTtsLiteVersion: '0.4.6', device: s.tts.device === 'cpu' ? 'cpu' : 'cuda' }))
+      } else {
+        const p = { stage: r.stage, message: `安装失败:${r.error}` }
+        win?.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p)
+        petWin.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p)
       }
     })
   })
