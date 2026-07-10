@@ -46,6 +46,7 @@ export function realSpawnProcess(opts: {
   voice: { gptModel: string; sovitsModel: string; refAudio: string; refText: string }
   device: 'auto' | 'cuda' | 'cpu'
   useFlashAttn: boolean
+  modelsDir: string
 }): { kill(): void; waitReady(): Promise<void> } {
   const args = [
     opts.scriptPath,
@@ -53,7 +54,8 @@ export function realSpawnProcess(opts: {
     '--gpt-model', opts.voice.gptModel,
     '--sovits-model', opts.voice.sovitsModel,
     '--ref-audio', opts.voice.refAudio,
-    '--ref-text-file', opts.voice.refText
+    '--ref-text-file', opts.voice.refText,
+    '--models-dir', opts.modelsDir
   ]
   if (opts.device !== 'auto') args.push('--device', opts.device)
   if (opts.useFlashAttn) args.push('--use-flash-attn')
@@ -67,8 +69,9 @@ export function realSpawnWarmStart(opts: {
   scriptPath: string
   device: 'auto' | 'cuda' | 'cpu'
   useFlashAttn: boolean
+  modelsDir: string
 }): { kill(): void; waitReady(): Promise<void> } {
-  const args = [opts.scriptPath, '--warm-start']
+  const args = [opts.scriptPath, '--warm-start', '--models-dir', opts.modelsDir]
   if (opts.device !== 'auto') args.push('--device', opts.device)
   if (opts.useFlashAttn) args.push('--use-flash-attn')
 

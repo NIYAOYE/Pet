@@ -1,6 +1,6 @@
 import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -264,6 +264,10 @@ export function startShell(): void {
   const voiceScriptPath = join(appRoot, 'resources/voice/gsv_server.py')
   const voiceMarkerFile = (installPath: string): string => join(installPath, 'voice-runtime-marker.json')
   const voicePythonExe = (installPath: string): string => join(installPath, 'python.exe')
+  // gsv_tts 基础预训练模型缓存放在安装目录下(而非其默认的全局 ~/.cache/gsv):
+  // 1) 随运行时目录一起被导出/导入压缩包打包,做到"一个 zip 开箱即用";
+  // 2) 独占、可安全清空重试,不会和用户机器上其它 CPU/GPU 变体的下载互相踩踏。
+  const voiceModelsDir = (installPath: string): string => join(installPath, 'models')
   const PYPI_MIRROR_TUNA = 'https://pypi.tuna.tsinghua.edu.cn/simple'
   const PYTORCH_CUDA_MIRROR_ALIYUN = 'https://mirrors.aliyun.com/pytorch-wheels/cu128/'
   const PYTORCH_CUDA_OFFICIAL = 'https://download.pytorch.org/whl/cu128'
@@ -306,7 +310,8 @@ export function startShell(): void {
           refText: join(petDir, petVoice!.refText)
         },
         device: s.tts.device,
-        useFlashAttn: s.tts.useFlashAttn
+        useFlashAttn: s.tts.useFlashAttn,
+        modelsDir: voiceModelsDir(state.installPath)
       }),
       postSse: realPostSse
     })
@@ -735,12 +740,18 @@ export function startShell(): void {
           )
         },
         warmStartModels: async (dir) => {
-          // 起一次探针进程(--warm-start)触发 gsv_tts 自身的基础模型下载,READY 后立即关闭
+          // 先清空模型缓存目录再重新触发下载:gsv_tts 自己"目录已存在就跳过下载"的检查
+          // 不区分 CPU/GPU 变体、也不清理下载中途失败的残留,不清空的话失败重试会永远卡在
+          // 同一个报错——这里保证每次 warm-start 都是真正从头下载,不是断点续传。
+          const modelsDir = voiceModelsDir(dir)
+          rmSync(modelsDir, { recursive: true, force: true })
+          mkdirSync(modelsDir, { recursive: true })
           const probe = realSpawnWarmStart({
             pythonExe: voicePythonExe(dir),
             scriptPath: voiceScriptPath,
             device: s.tts.device,
-            useFlashAttn: false
+            useFlashAttn: false,
+            modelsDir
           })
           try { await probe.waitReady() } finally { probe.kill() }
         }
