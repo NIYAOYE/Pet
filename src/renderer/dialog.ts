@@ -1,5 +1,7 @@
 import type { ChatMessage, ChatSendAttachment } from '@shared/ipc'
+import { frameRect } from '@shared/petPackage'
 import { renderMarkdownSafe } from './markdown'
+import { groupMessages, formatClockTime } from './chatFormat'
 
 const panel = document.getElementById('panel') as HTMLElement
 const history = document.getElementById('history') as HTMLElement
@@ -9,9 +11,13 @@ const sendBtn = document.getElementById('send') as HTMLButtonElement
 const pickBtn = document.getElementById('pick') as HTMLButtonElement
 const shotBtn = document.getElementById('shot') as HTMLButtonElement
 const attachStrip = document.getElementById('attach') as HTMLElement
+const avatarEl = document.getElementById('avatar') as HTMLElement
+const petNameEl = document.getElementById('pet-name') as HTMLElement
+const headCollapseBtn = document.getElementById('headCollapse') as HTMLButtonElement
 
 const MAX_ATTACH = 6
 let pending: ChatSendAttachment[] = []
+let avatarDataUrl = ''
 
 function renderPending(): void {
   attachStrip.innerHTML = ''
@@ -58,51 +64,116 @@ async function addFiles(files: Iterable<File>): Promise<void> {
   if (out.length) addPending(out)
 }
 
+/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;失败(如包缺 idle 动画)时静默放弃,
+ *  头像元素退回 CSS 里的浅紫底色占位,不影响聊天功能本身。 */
+async function loadAvatar(): Promise<void> {
+  const pet = await window.petApi.getPet()
+  petNameEl.textContent = pet.manifest.displayName
+  const idle = pet.manifest.animations.idle
+  if (!idle) return
+  const rect = frameRect(pet.manifest.sheet, idle.row, 0)
+  const img = new Image()
+  img.src = pet.spritesheetDataUrl
+  await img.decode()
+  const canvas = document.createElement('canvas')
+  canvas.width = rect.w
+  canvas.height = rect.h
+  const ctx = canvas.getContext('2d')!
+  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h)
+  avatarDataUrl = canvas.toDataURL()
+  avatarEl.style.backgroundImage = `url(${avatarDataUrl})`
+}
+
 let collapsed = true
 let streaming = '' // 进行中的 pet 回复(逐字累积)
+let streamingStartTime = 0
 let statusEl: HTMLElement | null = null
 
 function clearStatus(): void {
-  document.getElementById('status-msg')?.remove()
+  document.getElementById('status-row')?.remove()
   statusEl = null
 }
 
-function renderStreaming(): void {
-  let temp = document.getElementById('streaming-msg')
-  if (!temp) {
-    temp = document.createElement('div')
-    temp.id = 'streaming-msg'
-    temp.className = 'msg pet'
-    history.appendChild(temp)
+/** 组装一行消息:pet 一侧在左带头像(或占位)+ 时间在气泡右侧,user 一侧在右、时间在气泡左侧。 */
+function buildRow(role: ChatMessage['role'], bubbleEl: HTMLElement, timestamp: number | undefined, showAvatar: boolean): HTMLElement {
+  const row = document.createElement('div')
+  row.className = `row ${role}`
+  if (role === 'pet') {
+    const av = document.createElement('div')
+    av.className = showAvatar ? 'mini-avatar' : 'avatar-spacer'
+    if (showAvatar && avatarDataUrl) av.style.backgroundImage = `url(${avatarDataUrl})`
+    row.appendChild(av)
   }
-  temp.textContent = streaming
+  const time = timestamp != null ? formatClockTime(timestamp) : null
+  if (role === 'user' && time) {
+    const t = document.createElement('span')
+    t.className = 'time'
+    t.textContent = time
+    row.appendChild(t)
+  }
+  row.appendChild(bubbleEl)
+  if (role === 'pet' && time) {
+    const t = document.createElement('span')
+    t.className = 'time'
+    t.textContent = time
+    row.appendChild(t)
+  }
+  return row
+}
+
+function buildBubble(m: ChatMessage): HTMLElement {
+  const el = document.createElement('div')
+  el.className = `bubble ${m.role}`
+  // pet 回复渲染安全 Markdown 子集(转义后再套有限规则,防注入);用户消息保持纯文本。
+  if (m.role === 'pet') {
+    el.innerHTML = renderMarkdownSafe(m.text)
+  } else {
+    const n = m.attachments?.length ?? 0
+    if (n > 0) {
+      const mark = document.createElement('span')
+      mark.className = 'imgmark'
+      mark.textContent = `🖼×${n}`
+      el.appendChild(mark)
+    }
+    el.appendChild(document.createTextNode(m.text))
+  }
+  return el
+}
+
+function renderStreaming(): void {
+  let row = document.getElementById('streaming-row') as HTMLElement | null
+  if (!row) {
+    streamingStartTime = Date.now()
+    const bubble = document.createElement('div')
+    bubble.className = 'bubble pet'
+    bubble.id = 'streaming-bubble'
+    row = buildRow('pet', bubble, streamingStartTime, true)
+    row.id = 'streaming-row'
+    history.appendChild(row)
+  }
+  const bubble = document.getElementById('streaming-bubble') as HTMLElement
+  bubble.textContent = streaming
   history.scrollTop = history.scrollHeight
 }
 
 function render(messages: ChatMessage[]): void {
   clearStatus()
-  const temp = document.getElementById('streaming-msg')
-  if (temp) temp.remove()
+  document.getElementById('streaming-row')?.remove()
   history.innerHTML = ''
-  for (const m of messages) {
-    const el = document.createElement('div')
-    el.className = `msg ${m.role}`
-    // pet 回复渲染安全 Markdown 子集(转义后再套有限规则,防注入);用户消息保持纯文本。
-    // 流式过程中仍是纯文本(renderStreaming),完成时主进程回推 CHAT_UPDATE 触发本函数,
-    // 消息由纯文本"定格"为格式化 Markdown,避免半截标签的闪烁。
-    if (m.role === 'pet') {
-      el.innerHTML = renderMarkdownSafe(m.text)
-    } else {
-      const n = m.attachments?.length ?? 0
-      if (n > 0) {
-        const mark = document.createElement('span')
-        mark.className = 'imgmark'
-        mark.textContent = `🖼×${n}`
-        el.appendChild(mark)
-      }
-      el.appendChild(document.createTextNode(m.text))
+  for (const group of groupMessages(messages)) {
+    const groupEl = document.createElement('div')
+    groupEl.className = 'group'
+    if (group.role === 'pet') {
+      const tag = document.createElement('div')
+      tag.className = 'name-tag'
+      tag.textContent = petNameEl.textContent ?? ''
+      groupEl.appendChild(tag)
     }
-    history.appendChild(el)
+    group.messages.forEach((m, i) => {
+      const bubble = buildBubble(m)
+      groupEl.appendChild(buildRow(m.role, bubble, m.timestamp, i === 0))
+    })
+    history.appendChild(groupEl)
   }
   history.scrollTop = history.scrollHeight
 }
@@ -123,7 +194,7 @@ function submit(): void {
   // 即时生效——不必等主进程回推 CHAT_UPDATE。否则 collapsed 气泡会残留旧文字直到淡出,
   // 且被取消回复的残留前缀会串进新回复(取消结果被静默丢弃,不发 onDone/onError)。
   streaming = ''
-  document.getElementById('streaming-msg')?.remove()
+  document.getElementById('streaming-row')?.remove()
   clearStatus()
   window.chatApi.send({ text, attachments: pending.length ? pending : undefined })
   input.value = ''
@@ -133,6 +204,7 @@ function submit(): void {
 }
 
 toggleBtn.addEventListener('click', () => setCollapsed(!collapsed))
+headCollapseBtn.addEventListener('click', () => setCollapsed(true))
 sendBtn.addEventListener('click', submit)
 input.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) { e.preventDefault(); submit() }
@@ -173,18 +245,21 @@ window.chatApi.onDone(() => { streaming = '' })
 window.chatApi.onError((message) => {
   clearStatus()
   streaming = ''
-  const el = document.createElement('div')
-  el.className = 'msg pet'
-  el.textContent = `⚠ ${message}`
-  history.appendChild(el)
+  const bubble = document.createElement('div')
+  bubble.className = 'bubble pet'
+  bubble.textContent = `⚠ ${message}`
+  history.appendChild(buildRow('pet', bubble, Date.now(), true))
   history.scrollTop = history.scrollHeight
 })
 window.chatApi.onStatus((text) => {
   if (!statusEl) {
-    statusEl = document.createElement('div')
-    statusEl.id = 'status-msg'
-    statusEl.className = 'msg pet status'
-    history.appendChild(statusEl)
+    const bubble = document.createElement('div')
+    bubble.className = 'bubble pet status'
+    bubble.id = 'status-bubble'
+    const row = buildRow('pet', bubble, undefined, true)
+    row.id = 'status-row'
+    history.appendChild(row)
+    statusEl = bubble
   }
   statusEl.textContent = `🔍 ${text}`
   history.scrollTop = history.scrollHeight
@@ -197,3 +272,4 @@ document.addEventListener('visibilitychange', () => {
 })
 
 setCollapsed(true)
+void loadAvatar().catch(() => { /* 头像纯装饰,加载失败不影响聊天功能 */ })
