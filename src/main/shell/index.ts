@@ -602,7 +602,8 @@ export function startShell(): void {
     hasKey: secrets.hasKey(),
     hasSearchKey: searchSecrets.hasKey(),
     hasEmbeddingKey: embeddingSecrets.hasKey(),
-    hasFirecrawlKey: firecrawlSecrets.hasKey()
+    hasFirecrawlKey: firecrawlSecrets.hasKey(),
+    noPetInstalled: false // 走到这个 handler 说明 startShell 已经解析出一个可用宠物家目录
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
     const prev = loadSettings(settingsFile)

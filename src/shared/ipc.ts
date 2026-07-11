@@ -146,7 +146,7 @@ export interface ChatApi {
   openSettings(): void
 }
 
-export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean }
+export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean; noPetInstalled: boolean }
 export interface TestResult { ok: boolean; error?: string }
 
 export interface PetSummary { id: string; displayName: string; description: string }
