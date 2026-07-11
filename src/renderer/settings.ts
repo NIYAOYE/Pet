@@ -23,6 +23,7 @@ const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
+const noPetBanner = $<HTMLElement>('noPetBanner')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
 
 // 语音(TTS)分节控件
@@ -249,6 +250,7 @@ importPetBtn.addEventListener('click', async () => {
     if (!res) return // 用户取消,静默
     if (res.ok) {
       await refreshPets(res.pet.id)
+      noPetBanner.style.display = 'none'
       status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
     } else {
       status.textContent = `✗ ${res.message}`
@@ -361,8 +363,9 @@ void (async () => {
   browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''
   cdpModeConfirmedThisSession = false // 从快照恢复的值(哪怕是 cdp)不算"本会话已确认过"
   syncBrowserControlModeRow()
+  noPetBanner.style.display = snap.noPetInstalled ? '' : 'none'
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
-  showPage('model') // 默认落地页:模型 · API
+  showPage(snap.noPetInstalled ? 'pet' : 'model') // 没有宠物包时直接落地到"宠物"页,引导导入
 })()
 
 void (async () => {
