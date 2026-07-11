@@ -2,7 +2,7 @@ import { BrowserWindow, screen, shell } from 'electron'
 import { IPC, type ChatMessage } from '@shared/ipc'
 
 const COLLAPSED = { width: 320, height: 120 }
-const EXPANDED = { width: 320, height: 440 }
+const EXPANDED = { width: 320, height: 470 }
 
 export interface DialogController {
   toggle(getPetBounds: () => { x: number; y: number; width: number }): void

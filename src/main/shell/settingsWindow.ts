@@ -14,6 +14,8 @@ export function createSettingsWindow(opts: {
       width: 560,
       height: 520,
       title: 'Kibo 设置',
+      frame: false,
+      transparent: true,
       resizable: false,
       skipTaskbar: false,
       webPreferences: {

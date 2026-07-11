@@ -3,58 +3,100 @@
   <head>
     <meta charset="utf-8" />
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:" />
+    <link rel="stylesheet" href="./theme.css" />
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
                    font-family: system-ui, sans-serif; font-size: 13px; }
       /* 按住对话框本体任意空白处即可拖动整窗(OS 级拖拽);交互控件单独设为 no-drag */
-      #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column; gap: 6px;
-               padding: 8px; color: #f0f0f4; cursor: move; -webkit-app-region: drag; }
+      #panel { box-sizing: border-box; height: 100%; display: flex; flex-direction: column;
+               border-radius: var(--radius-window); overflow: hidden; background: var(--app-bg);
+               box-shadow: var(--shadow-float); cursor: move; -webkit-app-region: drag; }
       #input, button, #history { -webkit-app-region: no-drag; }
-      #history, .msg { cursor: default; }
+      #history, .bubble { cursor: default; }
+
+      /* 头部:仅展开态显示,含头像/名字/折叠按钮 */
+      #chat-head { display: none; align-items: center; gap: 8px; padding: 8px 10px; flex-shrink: 0;
+                   background: linear-gradient(180deg, var(--titlebar-highlight), var(--app-bg));
+                   border-bottom: 1px solid var(--border); -webkit-app-region: drag; }
+      #panel.expanded #chat-head { display: flex; }
+      #avatar { width: 26px; height: 26px; border-radius: 50%; background-color: var(--accent-soft);
+                background-size: cover; background-position: center; flex-shrink: 0; }
+      #pet-name { flex: 1; font-size: 12.5px; font-weight: 700; color: var(--text-primary); }
+      #headCollapse { -webkit-app-region: no-drag; width: 22px; height: 22px; border: none;
+                      border-radius: var(--radius-control); padding: 0; cursor: pointer;
+                      display: flex; align-items: center; justify-content: center;
+                      font-size: 13px; background: transparent; color: var(--accent); }
+      #headCollapse:hover { background: var(--accent-soft); }
 
       /* 历史列表:仅展开态显示 */
       /* min-height:0 关键:flex 子项默认 min-height:auto 不会收缩到内容高度以下,
          回复较长时会把下方输入条挤出固定高度的窗口(body overflow:hidden 裁掉)。
          设 0 后 #history 才能收缩并内部滚动,输入条始终可见。 */
-      #history { flex: 1; min-height: 0; overflow-y: auto; display: none; flex-direction: column; gap: 4px;
-                 background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 8px; }
+      #history { flex: 1; min-height: 0; overflow-y: auto; display: none; flex-direction: column; gap: 8px;
+                 padding: 10px; background: var(--surface-grad);
+                 scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
       #panel.expanded #history { display: flex; }
-      .msg { max-width: 85%; padding: 5px 9px; border-radius: 10px; word-break: break-word; }
-      .msg.user { align-self: flex-end; background: rgba(90, 110, 200, 0.95); }
-      .msg.pet { align-self: flex-start; background: rgba(60, 60, 80, 0.95); }
-      .msg.status { opacity: 0.7; font-style: italic; }
-      /* pet 回复内渲染的 Markdown 子集样式(小气泡里克制:标题降级为加粗、列表紧凑) */
-      .msg.pet ul { margin: 4px 0; padding-left: 18px; }
-      .msg.pet li { margin: 1px 0; }
-      .msg.pet strong { font-weight: 600; }
-      .msg.pet code { background: rgba(255,255,255,0.14); border-radius: 4px; padding: 0 3px; font-size: 12px; }
-      .msg.pet a.md-link { color: #9db4ff; text-decoration: underline; word-break: break-all; }
+      /* 细滚动条:轨道透明,滑块用贴近底色又能分辨的浅紫 */
+      #history::-webkit-scrollbar { width: 6px; }
+      #history::-webkit-scrollbar-track { background: transparent; }
+      #history::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: var(--radius-pill); }
+      #history::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
-      /* 输入条:永不被压缩,margin-top:auto 把它钉在窗口底部,始终可见 */
+      .group { display: flex; flex-direction: column; gap: 3px; }
+      .name-tag { font-size: 10.5px; color: var(--text-secondary); margin: 0 0 1px 28px; }
+      .row { display: flex; align-items: flex-end; gap: 6px; }
+      .row.user { justify-content: flex-end; }
+      .mini-avatar { width: 22px; height: 22px; border-radius: 50%; background-color: var(--accent-soft);
+                     background-size: cover; background-position: center; flex-shrink: 0; }
+      .avatar-spacer { width: 22px; flex-shrink: 0; }
+
+      .bubble { max-width: 78%; padding: 7px 11px; border-radius: 14px; word-break: break-word;
+                line-height: 1.45; border: 1.6px solid var(--outline); }
+      .bubble.pet { background: var(--pet-bubble-bg); color: var(--text-primary); border-bottom-left-radius: 4px; }
+      .bubble.user { background: var(--accent); color: #fff; border-bottom-right-radius: 4px; }
+      .bubble.status { opacity: 0.75; font-style: italic; }
+      /* pet 回复内渲染的 Markdown 子集样式(小气泡里克制:标题降级为加粗、列表紧凑) */
+      .bubble.pet ul { margin: 4px 0; padding-left: 18px; }
+      .bubble.pet li { margin: 1px 0; }
+      .bubble.pet strong { font-weight: 600; }
+      .bubble.pet code { background: var(--code-tint); border-radius: 4px; padding: 0 3px; font-size: 12px; }
+      .bubble.pet a.md-link { color: var(--accent); text-decoration: underline; word-break: break-all; }
+
+      .time { font-size: 9.5px; color: var(--text-secondary); flex-shrink: 0; padding-bottom: 2px; }
+
+      /* 输入条:折叠态/展开态共用同一条,胶囊化 */
       #bar { display: flex; flex-shrink: 0; margin-top: auto; gap: 6px; align-items: center;
-             background: rgba(30, 30, 40, 0.92); border-radius: 12px; padding: 6px; }
-      #input { flex: 1; min-width: 0; border: none; outline: none; border-radius: 8px; padding: 6px 8px;
-               background: rgba(255, 255, 255, 0.12); color: #f0f0f4; cursor: text;
+             background: var(--card-bg); border: 1.5px solid var(--border); border-radius: var(--radius-pill);
+             padding: 6px 6px 6px 14px; }
+      #input { flex: 1; min-width: 0; border: none; outline: none; padding: 2px 0;
+               background: transparent; color: var(--text-primary); cursor: text;
                font-family: inherit; font-size: inherit; line-height: 1.4; resize: none;
                max-height: 66px; overflow-y: auto; }
-      button { border: none; border-radius: 8px; padding: 6px 8px; cursor: pointer;
-               background: rgba(255, 255, 255, 0.16); color: #f0f0f4; }
-      #send { display: none; }
-      #panel.expanded #send { display: inline-block; }
+      #input::placeholder { color: var(--text-secondary); }
+      button.icon, #toggle, #send { border: none; border-radius: 50%; width: 26px; height: 26px; padding: 0;
+             cursor: pointer; background: var(--accent-soft); color: var(--accent); font-size: 12px;
+             display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+      #send { display: none; background: var(--accent); color: #fff; }
+      #panel.expanded #send { display: flex; }
+      #panel.expanded #toggle { display: none; }
 
       /* 待发缩略图带 */
-      #attach { display: none; flex-shrink: 0; gap: 6px; flex-wrap: wrap; -webkit-app-region: no-drag; }
+      #attach { display: none; flex-shrink: 0; gap: 6px; flex-wrap: wrap; padding: 0 10px; -webkit-app-region: no-drag; }
       #attach .thumb { position: relative; width: 44px; height: 44px; }
-      #attach .thumb img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; }
+      #attach .thumb img { width: 44px; height: 44px; object-fit: cover; border-radius: 6px; border: 1px solid var(--border); }
       #attach .thumb button { position: absolute; top: -6px; right: -6px; width: 16px; height: 16px;
              padding: 0; line-height: 14px; border-radius: 8px; font-size: 11px;
-             background: rgba(30,30,40,0.95); color: #fff; }
-      #bar button.icon { padding: 6px 7px; }
-      .msg .imgmark { opacity: 0.85; margin-right: 4px; }
+             background: var(--outline); color: #fff; }
+      .imgmark { opacity: 0.85; margin-right: 4px; }
     </style>
   </head>
   <body>
     <div id="panel" class="collapsed">
+      <div id="chat-head">
+        <div id="avatar"></div>
+        <div id="pet-name"></div>
+        <button id="headCollapse" type="button" title="收起">⤡</button>
+      </div>
       <div id="history"></div>
       <div id="attach"></div>
       <div id="bar">
@@ -62,7 +104,7 @@
         <button id="pick" class="icon" title="选择图片">＋</button>
         <button id="shot" class="icon" title="框选截屏">📷</button>
         <button id="toggle" title="展开">⤢</button>
-        <button id="send">发送</button>
+        <button id="send">➤</button>
       </div>
     </div>
     <script type="module" src="./dialog.ts"></script>

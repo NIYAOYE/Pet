@@ -24,6 +24,8 @@ const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 const noPetBanner = $<HTMLElement>('noPetBanner')
+const closeBtn = $<HTMLButtonElement>('closeBtn')
+closeBtn.addEventListener('click', () => window.close())
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
 // 本页是否是在"引导模式(无任何已装宠物包)"下打开的——见 save 按钮处理里的用法:
 // 这种情况下即便用户选中的宠物 id 恰好等于 savedActivePetId 的默认值(比如重新导入了
