@@ -20,6 +20,7 @@
       .page.active { display: flex; }
       .page h2 { font-size: 13px; margin: 0 0 2px; opacity: 0.9; }
       .hint { opacity: 0.8; line-height: 1.5; }
+      .banner-warn { background: rgba(230,160,60,0.18); border: 1px solid rgba(230,160,60,0.6); border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
       label { display: flex; flex-direction: column; gap: 4px; }
       input { border: none; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.12); color: #f0f0f4; }
       /* select 用不透明底色,option 单独给高对比配色(半透明背景会让 OS 下拉列表很淡看不清) */
@@ -35,7 +36,7 @@
   </head>
   <body>
     <div id="app">
-      <header><h1>宠物大脑设置</h1></header>
+      <header><h1>Kibo 设置</h1></header>
       <div id="layout">
         <nav id="sidenav">
           <button class="navitem" data-page="model" type="button">模型 · API</button>
@@ -67,6 +68,7 @@
 
           <section class="page" data-page="pet">
             <h2>宠物</h2>
+            <div id="noPetBanner" class="banner-warn" style="display:none">未检测到宠物包,请先导入一个宠物包,选中它并点击"保存",再点击"立即重启"。</div>
             <label>当前宠物(重启后生效)
               <select id="petSelect"></select>
             </label>

@@ -23,7 +23,12 @@ const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
+const noPetBanner = $<HTMLElement>('noPetBanner')
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
+// 本页是否是在"引导模式(无任何已装宠物包)"下打开的——见 save 按钮处理里的用法:
+// 这种情况下即便用户选中的宠物 id 恰好等于 savedActivePetId 的默认值(比如重新导入了
+// 一个同样叫 luluka 的包),应用本身也还没正常启动,任何一次成功保存都需要重启才能生效。
+let startedWithNoPet = false
 
 // 语音(TTS)分节控件
 const ttsEnabled = $<HTMLInputElement>('ttsEnabled')
@@ -249,6 +254,7 @@ importPetBtn.addEventListener('click', async () => {
     if (!res) return // 用户取消,静默
     if (res.ok) {
       await refreshPets(res.pet.id)
+      noPetBanner.style.display = 'none'
       status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
     } else {
       status.textContent = `✗ ${res.message}`
@@ -320,10 +326,10 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       },
       tts: currentTts()
     })
-    if (petSelect.value !== savedActivePetId) {
+    if (petSelect.value !== savedActivePetId || startedWithNoPet) {
       savedActivePetId = petSelect.value
       relaunchBtn.style.display = ''
-      status.textContent = '✓ 已保存 · 宠物切换将在重启后生效'
+      status.textContent = '✓ 已保存 · 需要重启才能生效'
     } else {
       status.textContent = '✓ 已保存'
     }
@@ -361,10 +367,16 @@ void (async () => {
   browserControlChromePath.value = snap.settings.browserControl.chromePath ?? ''
   cdpModeConfirmedThisSession = false // 从快照恢复的值(哪怕是 cdp)不算"本会话已确认过"
   syncBrowserControlModeRow()
+  noPetBanner.style.display = snap.noPetInstalled ? '' : 'none'
+  startedWithNoPet = snap.noPetInstalled
   status.textContent = snap.hasKey ? '(已配置 Key,如需更换请重新填写)' : '首次使用:选 Provider、填 Key 即可。'
-  showPage('model') // 默认落地页:模型 · API
+  showPage(snap.noPetInstalled ? 'pet' : 'model') // 没有宠物包时直接落地到"宠物"页,引导导入
 })()
 
 void (async () => {
-  ttsRuntimeStatus.textContent = formatRuntimeState(await window.voiceApi.getState())
+  try {
+    ttsRuntimeStatus.textContent = formatRuntimeState(await window.voiceApi.getState())
+  } catch {
+    // 无宠物包引导模式下语音子系统未接线(见 startOnboarding),这里静默即可
+  }
 })()

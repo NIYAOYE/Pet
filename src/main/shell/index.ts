@@ -1,6 +1,6 @@
 import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
 import { join } from 'node:path'
-import { mkdirSync, readFileSync, existsSync, writeFileSync } from 'node:fs'
+import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
@@ -9,9 +9,10 @@ import { createVoiceSidecar } from '../voice/voiceSidecar'
 import { createVoiceProvider } from '../voice/voiceProvider'
 import { createLlmTranslator } from '../voice/translate'
 import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
+import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
 import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
 import { parseRuntimeMarker, isRuntimeUsable, serializeRuntimeMarker, VOICE_RUNTIME_MARKER_VERSION } from '../voice/runtimeMarker'
-import { realSpawnProcess, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
+import { realSpawnProcess, realSpawnWarmStart, realPostSse, realDownloadEmbeddablePython, realDetectGpu, realPipInstall } from '../voice/realVoiceTransport'
 import { createProvider } from '../providers/createProvider'
 import { createScreenshotState } from '../automation/screenshotState'
 import { captureFullScreen } from '../media/fullScreenCapture'
@@ -50,7 +51,7 @@ import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
-import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
+import { resolvePetHome } from '../pets/resolvePetHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
@@ -69,6 +70,85 @@ import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
 let tray: Tray | null = null
 
+/**
+ * 全新安装、且用户还没导入任何宠物包时的降级启动路径:既没有打包内置的宠物包
+ * (Part 2 起打包不再带真实宠物包),也没有 userData 里已导入的。只拉起托盘 +
+ * 设置窗口,引导用户导入宠物包后重启;不建任何依赖宠物家目录的窗口/服务
+ * (宠物精灵窗、对话框、气泡、待办、记忆、agent providers、语音、自动化等)。
+ * 用户导入宠物包并点"立即重启"后,下次 startShell() 会通过 resolvePetHome 正常
+ * 走 'ready' 分支。
+ */
+function startOnboarding(opts: {
+  appRoot: string
+  preload: string
+  rendererUrl: string | undefined
+  dirname: string
+  userData: string
+  settingsFile: string
+  petCatalogDirs: { bundledPetsDir: string; userPetsDir: string }
+}): void {
+  const { appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs } = opts
+
+  const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
+  const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
+  const embeddingSecrets = createSecretStore(join(userData, 'secrets-embedding.bin'), safeStorage)
+  const firecrawlSecrets = createSecretStore(join(userData, 'secrets-firecrawl.bin'), safeStorage)
+
+  const settings = createSettingsWindow({
+    preload,
+    url: rendererUrl ? `${rendererUrl}/settings.html` : undefined,
+    settingsHtml: join(dirname, '../renderer/settings.html')
+  })
+
+  ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
+    settings: loadSettings(settingsFile),
+    hasKey: secrets.hasKey(),
+    hasSearchKey: searchSecrets.hasKey(),
+    hasEmbeddingKey: embeddingSecrets.hasKey(),
+    hasFirecrawlKey: firecrawlSecrets.hasKey(),
+    noPetInstalled: listPets(petCatalogDirs).length === 0
+  }))
+  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
+    saveSettings(settingsFile, normalizeSettings(raw))
+    // 注:正常启动路径下的 SET_SETTINGS 还会在关闭 browserControl.enabled 时调用
+    // browserControl.close() —— 这个模式下 browserControl 压根没建过(没有宠物就
+    // 没有任何自动化功能可用),不存在"正在运行、需要关掉"的场景,故省略。
+  })
+  ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : secrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : searchSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : embeddingSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_FIRECRAWL_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : firecrawlSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.TEST_CONNECTION, async (_e, raw): Promise<TestResult> => {
+    const arg = validateTestConnectionArg(raw)
+    if (!arg) return { ok: false, error: 'invalid request' }
+    return testConnection(arg.provider, arg.key)
+  })
+  ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
+  ipcMain.handle(IPC.IMPORT_PET, async () => {
+    const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (r.canceled || r.filePaths.length === 0) return null
+    return importPetFolder(r.filePaths[0], petCatalogDirs)
+  })
+  ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
+  ipcMain.on(IPC.OPEN_SETTINGS, () => settings.open())
+
+  tray = createTray(join(appRoot, 'resources/tray.png'), {
+    onSettings: () => settings.open(),
+    onQuickAction: () => settings.open(),
+    onTodos: () => settings.open()
+  })
+
+  settings.open()
+}
+
 export function startShell(): void {
   const dirname = fileURLToPath(new URL('.', import.meta.url)) // resolves to out/main/ at runtime (electron-vite bundles shell into out/main/index.js)
   const appRoot = app.isPackaged ? process.resourcesPath : join(dirname, '../..')
@@ -81,29 +161,32 @@ export function startShell(): void {
   const overlayUrl = rendererUrl ? `${rendererUrl}/regionOverlay.html` : undefined
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
-  // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
-  // id 会让 ensurePetHome 抛错;若不兜底,startShell 的异常会变成无窗口的静默启动失败。故:
-  // 配置的宠物包缺失时回退到默认宠物(default 自身仍缺失才真正抛错)。
-  const petHomeOpts = { userDataDir: userData, bundledPetsDir: petsDir(appRoot) }
+  const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
   // MVP-05 的旧全局 userData/memory 是在默认宠物 luluka 下攒的,只在"激活的就是默认宠物"时
   // 一次性迁入,避免把 luluka 的记忆错误搬进另一只宠物的文件夹(spec §3.3:仅对默认宠物迁移)。
   const legacyMemoryDir = join(userData, 'memory')
   const configuredPetId = loadSettings(settingsFile).activePetId
   const defaultPetId = DEFAULT_SETTINGS.activePetId
-  let petHomeResult: PetHomeResult
-  try {
-    petHomeResult = ensurePetHome({
-      ...petHomeOpts,
-      activePetId: configuredPetId,
-      legacyMemoryDir: configuredPetId === defaultPetId ? legacyMemoryDir : undefined
-    })
-  } catch (err) {
-    if (configuredPetId === defaultPetId) throw err
-    console.warn(`[pet] activePetId "${configuredPetId}" 无对应宠物包,回退默认 "${defaultPetId}"`, err)
-    // 回退到默认宠物 → 此时迁移旧全局记忆(luluka 的)是正确的
-    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: defaultPetId, legacyMemoryDir })
+  // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
+  // id、或(自 Part 2 起)全新安装还没导入过任何宠物包,都会让 resolvePetHome 报 onboarding
+  // 而不是抛错——此时不继续往下建正常的宠物精灵窗等重家伙,转去引导导入。
+  // 注:resolvePetHome 只检查"配置的 id"和"默认 id"这两个特定 id,不像 startOnboarding 里
+  // GET_SETTINGS 的 noPetInstalled(靠 listPets 扫描 userData/pets 下所有包)那样看"是否存在
+  // 任意可用宠物包"。两者判定口径不同,可能出现"resolvePetHome 判定 onboarding,但
+  // noPetInstalled 为 false(因为磁盘上还留着一个无关的、之前导入过的宠物包)"这种边界情况——
+  // 属于可接受的降级(用户在"宠物"页选中它、保存、重启即可正常进入),不是 bug。
+  const resolved = resolvePetHome({
+    userDataDir: userData,
+    bundledPetsDir: petCatalogDirs.bundledPetsDir,
+    configuredPetId,
+    defaultPetId,
+    legacyMemoryDir
+  })
+  if (resolved.mode === 'onboarding') {
+    startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs })
+    return
   }
-  const { petHome, memoryDir } = petHomeResult
+  const { petHome, memoryDir } = resolved.petHome
   const petDir = petHome
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
@@ -263,6 +346,13 @@ export function startShell(): void {
   const voiceScriptPath = join(appRoot, 'resources/voice/gsv_server.py')
   const voiceMarkerFile = (installPath: string): string => join(installPath, 'voice-runtime-marker.json')
   const voicePythonExe = (installPath: string): string => join(installPath, 'python.exe')
+  // gsv_tts 基础预训练模型缓存放在安装目录下(而非其默认的全局 ~/.cache/gsv):
+  // 1) 随运行时目录一起被导出/导入压缩包打包,做到"一个 zip 开箱即用";
+  // 2) 独占、可安全清空重试,不会和用户机器上其它 CPU/GPU 变体的下载互相踩踏。
+  const voiceModelsDir = (installPath: string): string => join(installPath, 'models')
+  const PYPI_MIRROR_TUNA = 'https://pypi.tuna.tsinghua.edu.cn/simple'
+  const PYTORCH_CUDA_MIRROR_ALIYUN = 'https://mirrors.aliyun.com/pytorch-wheels/cu128/'
+  const PYTORCH_CUDA_OFFICIAL = 'https://download.pytorch.org/whl/cu128'
 
   function getVoiceRuntimeState(): VoiceRuntimeState {
     const s = loadSettings(settingsFile)
@@ -302,7 +392,8 @@ export function startShell(): void {
           refText: join(petDir, petVoice!.refText)
         },
         device: s.tts.device,
-        useFlashAttn: s.tts.useFlashAttn
+        useFlashAttn: s.tts.useFlashAttn,
+        modelsDir: voiceModelsDir(state.installPath)
       }),
       postSse: realPostSse
     })
@@ -593,7 +684,8 @@ export function startShell(): void {
     hasKey: secrets.hasKey(),
     hasSearchKey: searchSecrets.hasKey(),
     hasEmbeddingKey: embeddingSecrets.hasKey(),
-    hasFirecrawlKey: firecrawlSecrets.hasKey()
+    hasFirecrawlKey: firecrawlSecrets.hasKey(),
+    noPetInstalled: false // 走到这个 handler 说明 startShell 已经解析出一个可用宠物家目录
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
     const prev = loadSettings(settingsFile)
@@ -664,7 +756,6 @@ export function startShell(): void {
     if (!arg) return { ok: false, error: 'invalid request' }
     return testConnection(arg.provider, arg.key)
   })
-  const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
   ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
   ipcMain.handle(IPC.IMPORT_PET, async () => {
     const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
@@ -691,23 +782,58 @@ export function startShell(): void {
       device: s.tts.device,
       steps: {
         downloadEmbeddablePython: (dir) => realDownloadEmbeddablePython(dir, 'https://www.python.org/ftp/python/3.11.9/python-3.11.9-embed-amd64.zip'),
-        enablePip: async (dir) => { await realPipInstall(dir, ['--upgrade', 'pip']) },
-        detectGpu: realDetectGpu,
-        installTorch: async (dir, useCuda) => {
-          await realPipInstall(dir, useCuda
-            ? ['torch', 'torchvision', 'torchaudio', '--index-url', 'https://download.pytorch.org/whl/cu128']
-            : ['torch', 'torchvision', 'torchaudio'])
+        enablePip: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['--upgrade', 'pip'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
         },
-        installGsvTtsLite: async (dir) => { await realPipInstall(dir, ['gsv-tts-lite']) },
+        detectGpu: realDetectGpu,
+        installTorch: async (dir, useCuda, onProgress) => {
+          const candidates: MirrorCandidate[] = useCuda
+            ? [
+                { indexUrl: PYTORCH_CUDA_MIRROR_ALIYUN, label: '阿里云镜像', fastFail: true },
+                { indexUrl: PYTORCH_CUDA_OFFICIAL, label: '官方源', fastFail: false }
+              ]
+            : [
+                { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+                { indexUrl: undefined, label: '官方源', fastFail: false }
+              ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['torch', 'torchvision', 'torchaudio'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
+        installGsvTtsLite: async (dir, onProgress) => {
+          const candidates: MirrorCandidate[] = [
+            { indexUrl: PYPI_MIRROR_TUNA, label: '清华源', fastFail: true },
+            { indexUrl: undefined, label: '官方源', fastFail: false }
+          ]
+          await installWithMirrorFallback(
+            candidates,
+            (c) => realPipInstall(dir, ['gsv-tts-lite'], { indexUrl: c.indexUrl, fastFail: c.fastFail, onOutput: onProgress }),
+            onProgress
+          )
+        },
         warmStartModels: async (dir) => {
-          // 起一次 sidecar 触发 gsv_tts 自身的基础模型下载,READY 后立即关闭
-          const probe = realSpawnProcess({
+          // 先清空模型缓存目录再重新触发下载:gsv_tts 自己"目录已存在就跳过下载"的检查
+          // 不区分 CPU/GPU 变体、也不清理下载中途失败的残留,不清空的话失败重试会永远卡在
+          // 同一个报错——这里保证每次 warm-start 都是真正从头下载,不是断点续传。
+          const modelsDir = voiceModelsDir(dir)
+          rmSync(modelsDir, { recursive: true, force: true })
+          mkdirSync(modelsDir, { recursive: true })
+          const probe = realSpawnWarmStart({
             pythonExe: voicePythonExe(dir),
             scriptPath: voiceScriptPath,
-            port: VOICE_PORT + 1,
-            voice: { gptModel: '__probe__', sovitsModel: '__probe__', refAudio: '__probe__', refText: '__probe__' },
             device: s.tts.device,
-            useFlashAttn: false
+            useFlashAttn: false,
+            modelsDir
           })
           try { await probe.waitReady() } finally { probe.kill() }
         }
@@ -717,6 +843,10 @@ export function startShell(): void {
       if (r.ok) {
         mkdirSync(destDir, { recursive: true })
         writeFileSync(voiceMarkerFile(destDir), serializeRuntimeMarker({ markerVersion: VOICE_RUNTIME_MARKER_VERSION, gsvTtsLiteVersion: '0.4.6', device: s.tts.device === 'cpu' ? 'cpu' : 'cuda' }))
+      } else {
+        const p = { stage: r.stage, message: `安装失败:${r.error}` }
+        win?.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p)
+        petWin.webContents.send(IPC.VOICE_INSTALL_PROGRESS, p)
       }
     })
   })

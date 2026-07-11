@@ -1,10 +1,10 @@
-# Pet-Agent · 桌面宠物 Agent
+# Kibo · 桌面宠物 Agent
 
 Shimeji 风格的桌面宠物(Electron + TypeScript),内置自研 agent 内核:可插拔 LLM Provider、Markdown 技能、分层记忆。
 
 ## 安装(打包版)
 
-双击 `dist/Pet-Agent Setup <版本>.exe` 走安装向导即可,**不需要装 Node、不需要命令行**。默认**每用户安装、免管理员**(装到 `%LOCALAPPDATA%\Programs\Pet-Agent`,可在向导里改安装目录),并创建桌面 / 开始菜单快捷方式。
+双击 `dist/Kibo Setup <版本>.exe` 走安装向导即可,**不需要装 Node、不需要命令行**。默认**每用户安装、免管理员**(装到 `%LOCALAPPDATA%\Programs\Kibo`,可在向导里改安装目录),并创建桌面 / 开始菜单快捷方式。
 
 > ⚠️ **未签名提示**:安装包未做代码签名,首次运行 Windows SmartScreen 可能拦截 →「更多信息」→「仍要运行」。
 
@@ -36,7 +36,7 @@ pnpm dist         # 打包 Windows 安装包(见下方构建说明)
 
 ## 宠物包:可移植、可编辑、可换
 
-一只宠物 = 一个**自包含文件夹**,首次启动后落在用户目录 `%APPDATA%\Pet-Agent\pets\<宠物id>\`,内含:
+一只宠物 = 一个**自包含文件夹**,首次启动后落在用户目录 `%APPDATA%\Kibo\pets\<宠物id>\`,内含:
 
 - `pet.json` —— 元数据 + 动画清单(改 `displayName` 即改宠物显示名)
 - `spritesheet.webp` —— 美术
@@ -46,11 +46,11 @@ pnpm dist         # 打包 Windows 安装包(见下方构建说明)
 
 **整个 `pets\<id>\` 文件夹可直接拷走**(U 盘 / 网盘)备份或迁移到另一台机器——性格 + 记忆一起走。
 
-**换 / 改宠物**:安装包内置了多只宠物;改 `%APPDATA%\Pet-Agent\settings.json` 里的 `activePetId` 为想要的宠物 id,重启即可切换(该宠物首次激活会自动播种到用户目录)。id 拼错 / 指向不存在的宠物时会自动回退到默认宠物。
+**换 / 改宠物**:改 `%APPDATA%\Kibo\settings.json` 里的 `activePetId` 为想要的宠物 id,重启即可切换(该宠物首次激活会自动播种到用户目录)。id 拼错 / 指向不存在的宠物时会自动回退到默认宠物。
 
 ## 记忆与隐私(重要)
 
-宠物拥有分层记忆,数据存在**该宠物文件夹**的 `memory/` 里(`%APPDATA%\Pet-Agent\pets\<id>\memory\`;设置窗有「打开记忆文件夹」按钮):
+宠物拥有分层记忆,数据存在**该宠物文件夹**的 `memory/` 里(`%APPDATA%\Kibo\pets\<id>\memory\`;设置窗有「打开记忆文件夹」按钮):
 
 - `facts.json` —— 宠物记住的关于你的事实(唯一权威源,人类可读,可手动编辑/删除)
 - `vector-index.json` —— 由事实生成的向量索引,可随时删除,会自动重建
@@ -60,6 +60,6 @@ pnpm dist         # 打包 Windows 安装包(见下方构建说明)
 
 **识图与截屏隐私告知**:你可以把图片交给宠物识图——选文件、拖拽、粘贴,或用「框选截屏」抓取当前屏幕的一块区域。使用截屏时应用会读取当前屏幕画面用于框选,并把你所选区域发送给你配置的**视觉模型**端点。图片仅本次发送使用,**不写入本地记忆/历史**(`transcript.json` 只留 `[图片]` 文本占位,不含图像数据)。是否发往在线服务取决于你选的 Provider(用支持视觉的模型,如 Claude、gpt-4o、qwen-vl、GLM-4V,或本地 Ollama llava)。当前模型不支持识图时会提示你换模型。
 
-**API Key 不随宠物包迁移**:key 经 Windows 凭据存储(safeStorage / DPAPI)加密,**与本机本用户绑定、不可移植**;它存在 `%APPDATA%\Pet-Agent` 根目录(不在宠物包内),换机器需重新填。
+**API Key 不随宠物包迁移**:key 经 Windows 凭据存储(safeStorage / DPAPI)加密,**与本机本用户绑定、不可移植**;它存在 `%APPDATA%\Kibo` 根目录(不在宠物包内),换机器需重新填。
 
-卸载应用**不会删除** `%APPDATA%\Pet-Agent` 下的记忆与配置。
+卸载应用**不会删除** `%APPDATA%\Kibo` 下的记忆与配置。
