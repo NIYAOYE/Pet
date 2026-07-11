@@ -40,7 +40,7 @@ Kibo 是一只 Shimeji 风格的桌面宠物：透明背景、始终置顶、可
 
 > ⚠️ **未签名提示**：安装包未做代码签名，首次运行 Windows SmartScreen 可能拦截 →「更多信息」→「仍要运行」。
 
-首次启动会弹出设置窗：选择 Provider（Claude / OpenAI 兼容端点）、填入 API Key 即可开始对话。
+安装包本身**不自带宠物**：首次启动会弹出设置窗，提示你导入一个宠物包。Releases 页同时提供了一个示例宠物包 `luluka-pet-pack.zip`，下载解压后在设置窗里「导入宠物包」选中该文件夹即可；之后再选择 Provider（Claude / OpenAI 兼容端点）、填入 API Key 就能开始对话。
 
 ## 开发
 
