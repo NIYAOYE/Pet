@@ -51,7 +51,7 @@ import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
-import { ensurePetHome, type PetHomeResult } from '../pets/petHome'
+import { resolvePetHome } from '../pets/resolvePetHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
@@ -70,6 +70,85 @@ import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 // the tray icon vanish); mirrors MVP-01's module-level tray reference.
 let tray: Tray | null = null
 
+/**
+ * 全新安装、且用户还没导入任何宠物包时的降级启动路径:既没有打包内置的宠物包
+ * (Part 2 起打包不再带真实宠物包),也没有 userData 里已导入的。只拉起托盘 +
+ * 设置窗口,引导用户导入宠物包后重启;不建任何依赖宠物家目录的窗口/服务
+ * (宠物精灵窗、对话框、气泡、待办、记忆、agent providers、语音、自动化等)。
+ * 用户导入宠物包并点"立即重启"后,下次 startShell() 会通过 resolvePetHome 正常
+ * 走 'ready' 分支。
+ */
+function startOnboarding(opts: {
+  appRoot: string
+  preload: string
+  rendererUrl: string | undefined
+  dirname: string
+  userData: string
+  settingsFile: string
+  petCatalogDirs: { bundledPetsDir: string; userPetsDir: string }
+}): void {
+  const { appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs } = opts
+
+  const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
+  const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
+  const embeddingSecrets = createSecretStore(join(userData, 'secrets-embedding.bin'), safeStorage)
+  const firecrawlSecrets = createSecretStore(join(userData, 'secrets-firecrawl.bin'), safeStorage)
+
+  const settings = createSettingsWindow({
+    preload,
+    url: rendererUrl ? `${rendererUrl}/settings.html` : undefined,
+    settingsHtml: join(dirname, '../renderer/settings.html')
+  })
+
+  ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => ({
+    settings: loadSettings(settingsFile),
+    hasKey: secrets.hasKey(),
+    hasSearchKey: searchSecrets.hasKey(),
+    hasEmbeddingKey: embeddingSecrets.hasKey(),
+    hasFirecrawlKey: firecrawlSecrets.hasKey(),
+    noPetInstalled: listPets(petCatalogDirs).length === 0
+  }))
+  ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
+    saveSettings(settingsFile, normalizeSettings(raw))
+    // 注:正常启动路径下的 SET_SETTINGS 还会在关闭 browserControl.enabled 时调用
+    // browserControl.close() —— 这个模式下 browserControl 压根没建过(没有宠物就
+    // 没有任何自动化功能可用),不存在"正在运行、需要关掉"的场景,故省略。
+  })
+  ipcMain.handle(IPC.SET_API_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : secrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_SEARCH_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : searchSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_EMBEDDING_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : embeddingSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.SET_FIRECRAWL_KEY, async (_e, raw): Promise<boolean> => {
+    const key = validateKey(raw); return key === null ? false : firecrawlSecrets.setKey(key)
+  })
+  ipcMain.handle(IPC.TEST_CONNECTION, async (_e, raw): Promise<TestResult> => {
+    const arg = validateTestConnectionArg(raw)
+    if (!arg) return { ok: false, error: 'invalid request' }
+    return testConnection(arg.provider, arg.key)
+  })
+  ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
+  ipcMain.handle(IPC.IMPORT_PET, async () => {
+    const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
+    if (r.canceled || r.filePaths.length === 0) return null
+    return importPetFolder(r.filePaths[0], petCatalogDirs)
+  })
+  ipcMain.on(IPC.RELAUNCH_APP, () => { app.relaunch(); app.quit() })
+  ipcMain.on(IPC.OPEN_SETTINGS, () => settings.open())
+
+  tray = createTray(join(appRoot, 'resources/tray.png'), {
+    onSettings: () => settings.open(),
+    onQuickAction: () => settings.open(),
+    onTodos: () => settings.open()
+  })
+
+  settings.open()
+}
+
 export function startShell(): void {
   const dirname = fileURLToPath(new URL('.', import.meta.url)) // resolves to out/main/ at runtime (electron-vite bundles shell into out/main/index.js)
   const appRoot = app.isPackaged ? process.resourcesPath : join(dirname, '../..')
@@ -82,29 +161,27 @@ export function startShell(): void {
   const overlayUrl = rendererUrl ? `${rendererUrl}/regionOverlay.html` : undefined
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
-  // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
-  // id 会让 ensurePetHome 抛错;若不兜底,startShell 的异常会变成无窗口的静默启动失败。故:
-  // 配置的宠物包缺失时回退到默认宠物(default 自身仍缺失才真正抛错)。
-  const petHomeOpts = { userDataDir: userData, bundledPetsDir: petsDir(appRoot) }
+  const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
   // MVP-05 的旧全局 userData/memory 是在默认宠物 luluka 下攒的,只在"激活的就是默认宠物"时
   // 一次性迁入,避免把 luluka 的记忆错误搬进另一只宠物的文件夹(spec §3.3:仅对默认宠物迁移)。
   const legacyMemoryDir = join(userData, 'memory')
   const configuredPetId = loadSettings(settingsFile).activePetId
   const defaultPetId = DEFAULT_SETTINGS.activePetId
-  let petHomeResult: PetHomeResult
-  try {
-    petHomeResult = ensurePetHome({
-      ...petHomeOpts,
-      activePetId: configuredPetId,
-      legacyMemoryDir: configuredPetId === defaultPetId ? legacyMemoryDir : undefined
-    })
-  } catch (err) {
-    if (configuredPetId === defaultPetId) throw err
-    console.warn(`[pet] activePetId "${configuredPetId}" 无对应宠物包,回退默认 "${defaultPetId}"`, err)
-    // 回退到默认宠物 → 此时迁移旧全局记忆(luluka 的)是正确的
-    petHomeResult = ensurePetHome({ ...petHomeOpts, activePetId: defaultPetId, legacyMemoryDir })
+  // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
+  // id、或(自 Part 2 起)全新安装还没导入过任何宠物包,都会让 resolvePetHome 报 onboarding
+  // 而不是抛错——此时不继续往下建正常的宠物精灵窗等重家伙,转去引导导入。
+  const resolved = resolvePetHome({
+    userDataDir: userData,
+    bundledPetsDir: petCatalogDirs.bundledPetsDir,
+    configuredPetId,
+    defaultPetId,
+    legacyMemoryDir
+  })
+  if (resolved.mode === 'onboarding') {
+    startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs })
+    return
   }
-  const { petHome, memoryDir } = petHomeResult
+  const { petHome, memoryDir } = resolved.petHome
   const petDir = petHome
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
@@ -674,7 +751,6 @@ export function startShell(): void {
     if (!arg) return { ok: false, error: 'invalid request' }
     return testConnection(arg.provider, arg.key)
   })
-  const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
   ipcMain.handle(IPC.LIST_PETS, async () => listPets(petCatalogDirs))
   ipcMain.handle(IPC.IMPORT_PET, async () => {
     const r = await electronDialog.showOpenDialog({ properties: ['openDirectory'] })
