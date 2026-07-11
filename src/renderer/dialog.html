@@ -33,8 +33,14 @@
          回复较长时会把下方输入条挤出固定高度的窗口(body overflow:hidden 裁掉)。
          设 0 后 #history 才能收缩并内部滚动,输入条始终可见。 */
       #history { flex: 1; min-height: 0; overflow-y: auto; display: none; flex-direction: column; gap: 8px;
-                 padding: 10px; background: var(--surface-grad); }
+                 padding: 10px; background: var(--surface-grad);
+                 scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
       #panel.expanded #history { display: flex; }
+      /* 细滚动条:轨道透明,滑块用贴近底色又能分辨的浅紫 */
+      #history::-webkit-scrollbar { width: 6px; }
+      #history::-webkit-scrollbar-track { background: transparent; }
+      #history::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: var(--radius-pill); }
+      #history::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
       .group { display: flex; flex-direction: column; gap: 3px; }
       .name-tag { font-size: 10.5px; color: var(--text-secondary); margin: 0 0 1px 28px; }

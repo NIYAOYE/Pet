@@ -16,8 +16,14 @@
              box-sizing: border-box; padding: 10px 14px; border-radius: 22px;
              background: var(--surface-grad);
              box-shadow: var(--shadow-bubble);
-             word-break: break-word; line-height: 1.5; }
+             word-break: break-word; line-height: 1.5;
+             scrollbar-width: thin; scrollbar-color: var(--scrollbar-thumb) transparent; }
       #box:empty { display: none; }
+      /* 细滚动条:轨道透明(不打断气泡的圆角边缘),滑块用贴近底色又能分辨的浅紫 */
+      #box::-webkit-scrollbar { width: 6px; }
+      #box::-webkit-scrollbar-track { background: transparent; }
+      #box::-webkit-scrollbar-thumb { background: var(--scrollbar-thumb); border-radius: var(--radius-pill); }
+      #box::-webkit-scrollbar-thumb:hover { background: var(--scrollbar-thumb-hover); }
 
       /* 尾巴区:固定 12px 高,内含一个 CSS 三角,水平位置由 --tail-x 决定 */
       #tail { position: relative; height: 12px; flex-shrink: 0; }

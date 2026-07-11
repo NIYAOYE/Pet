@@ -18,6 +18,8 @@
   --danger-text: #8a3f3f;
   --shadow-bubble: 0 4px 14px rgba(150, 120, 220, 0.28);
   --shadow-float: 0 10px 26px rgba(150, 120, 220, 0.32);
+  --scrollbar-thumb: rgba(106, 79, 179, 0.32);
+  --scrollbar-thumb-hover: rgba(106, 79, 179, 0.52);
   --radius-window: 20px;
   --radius-panel: 12px;
   --radius-control: 8px;
