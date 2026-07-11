@@ -170,6 +170,11 @@ export function startShell(): void {
   // 换宠物是"改 settings.json 的 activePetId 后重启"的既定流程,拼错/残留一个未随包分发的
   // id、或(自 Part 2 起)全新安装还没导入过任何宠物包,都会让 resolvePetHome 报 onboarding
   // 而不是抛错——此时不继续往下建正常的宠物精灵窗等重家伙,转去引导导入。
+  // 注:resolvePetHome 只检查"配置的 id"和"默认 id"这两个特定 id,不像 startOnboarding 里
+  // GET_SETTINGS 的 noPetInstalled(靠 listPets 扫描 userData/pets 下所有包)那样看"是否存在
+  // 任意可用宠物包"。两者判定口径不同,可能出现"resolvePetHome 判定 onboarding,但
+  // noPetInstalled 为 false(因为磁盘上还留着一个无关的、之前导入过的宠物包)"这种边界情况——
+  // 属于可接受的降级(用户在"宠物"页选中它、保存、重启即可正常进入),不是 bug。
   const resolved = resolvePetHome({
     userDataDir: userData,
     bundledPetsDir: petCatalogDirs.bundledPetsDir,
