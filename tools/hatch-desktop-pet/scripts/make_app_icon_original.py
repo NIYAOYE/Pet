@@ -1,4 +1,4 @@
-"""从零画一个原创应用图标 build/icon.ico(开发期一次性)。
+"""从零画一个原创应用图标:build/icon.ico(安装包/exe 图标)+ resources/tray.png(系统托盘图标)。开发期一次性。
 
 不依赖任何宠物包(不同于同目录下已废弃的 make_app_icon.py,它是从 luluka
 的精灵图裁出来的)。构图上致敬用户提供的参考图(圆角方形底+猫耳机器人头盔+
@@ -78,7 +78,15 @@ def build() -> Image.Image:
 
 if __name__ == "__main__":
     canvas = build()
-    out = os.path.join(ROOT, "build", "icon.ico")
-    os.makedirs(os.path.dirname(out), exist_ok=True)
-    canvas.save(out, sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
-    print("wrote", out)
+
+    icon_out = os.path.join(ROOT, "build", "icon.ico")
+    os.makedirs(os.path.dirname(icon_out), exist_ok=True)
+    canvas.save(icon_out, sizes=[(16, 16), (32, 32), (48, 48), (64, 64), (128, 128), (256, 256)])
+    print("wrote", icon_out)
+
+    # 系统托盘图标(src/main/shell/tray.ts 读 resources/tray.png):用同一套构图重新
+    # 缩到 32x32,保持托盘图标和安装包/exe 图标视觉一致,不再是旧的 luluka 立绘。
+    tray_out = os.path.join(ROOT, "resources", "tray.png")
+    os.makedirs(os.path.dirname(tray_out), exist_ok=True)
+    canvas.resize((32, 32), Image.LANCZOS).save(tray_out)
+    print("wrote", tray_out)
