@@ -1,5 +1,5 @@
-import type { Line } from '../lines/linesLoader'
-import type { ForegroundWindowSample } from './foregroundWindowBridge'
+import { pickFromPool, type Line } from '../lines/linesLoader'
+import { buildForegroundWindowScript, parseForegroundWindowOutput, type ForegroundWindowSample } from './foregroundWindowBridge'
 
 export interface AppFocusRule { match: string[]; lines: Line[] }
 
@@ -107,4 +107,50 @@ export function stepAppFocusWatcher(
   ruleLastFiredMsAgo[matchedIndex] = 0
   next = { ...next, msSinceLastFire: 0, ruleLastFiredMsAgo }
   return { state: next, firedRuleIndex: matchedIndex }
+}
+
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
+
+export interface AppFocusWatcherHandle { stop: () => void }
+
+/**
+ * 薄包装:读取宠物包 lines.json 的 app_focus 规则(没有规则/没有该文件 → 空数组);
+ * 若规则为空,直接返回 no-op handle,不起轮询——不启动的检测就是零隐私/性能开销,
+ * 而不是"启动了但恰好不触发"。
+ */
+export function startAppFocusWatcher(
+  petDir: string,
+  opts: {
+    execFile: (script: string) => Promise<{ stdout: string; stderr: string }>
+    onMatch: (line: Line) => void
+    config?: Partial<AppFocusWatcherConfig>
+  }
+): AppFocusWatcherHandle {
+  let rules: AppFocusRule[]
+  try { rules = parseAppFocusRules(readFileSync(join(petDir, 'lines.json'), 'utf-8')) }
+  catch { rules = [] }
+
+  if (rules.length === 0) return { stop: (): void => {} }
+
+  const cfg = { ...DEFAULT_APP_FOCUS_WATCHER_CONFIG, ...opts.config }
+  let state = initAppFocusWatcher(rules.length, cfg)
+  let lastFiredText: string | null = null
+
+  const handle = setInterval(() => {
+    void opts.execFile(buildForegroundWindowScript())
+      .then((r) => parseForegroundWindowOutput(r.stdout))
+      .catch(() => null)
+      .then((sample) => {
+        const result = stepAppFocusWatcher(state, sample, rules, cfg)
+        state = result.state
+        if (result.firedRuleIndex === null) return
+        const line = pickFromPool(rules[result.firedRuleIndex].lines, lastFiredText ?? undefined)
+        if (!line) return
+        lastFiredText = line.text
+        opts.onMatch(line)
+      })
+  }, cfg.pollIntervalMs)
+
+  return { stop: (): void => clearInterval(handle) }
 }
