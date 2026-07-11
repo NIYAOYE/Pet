@@ -5,39 +5,62 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'" />
     <link rel="stylesheet" href="./theme.css" />
     <style>
-      html, body { margin: 0; font-family: system-ui, sans-serif; font-size: 13px; background: #1e1e28; color: #f0f0f4; }
-      #app { display: flex; flex-direction: column; height: 100vh; box-sizing: border-box; }
-      header { padding: 12px 16px 8px; }
-      h1 { font-size: 15px; margin: 0; }
+      html, body { margin: 0; height: 100%; background: transparent; overflow: hidden;
+                   font-family: system-ui, sans-serif; font-size: 13px; }
+      #card { box-sizing: border-box; height: 100%; display: flex; flex-direction: column;
+              border-radius: var(--radius-window); overflow: hidden; background: var(--app-bg);
+              box-shadow: var(--shadow-float); color: var(--text-primary); }
+
+      #titlebar { -webkit-app-region: drag; flex-shrink: 0; display: flex; align-items: center;
+                  justify-content: space-between; height: 34px; padding: 0 8px 0 14px;
+                  background: linear-gradient(180deg, #efe3ff, var(--app-bg));
+                  border-bottom: 1px solid var(--border); }
+      #titlebar .t { font-size: 12px; font-weight: 600; color: var(--text-primary); }
+      #closeBtn { -webkit-app-region: no-drag; width: 22px; height: 22px; border: none;
+                  border-radius: var(--radius-control); padding: 0; cursor: pointer;
+                  display: flex; align-items: center; justify-content: center; font-size: 13px;
+                  background: transparent; color: var(--accent); }
+      #closeBtn:hover { background: var(--danger-bg); color: var(--danger-text); }
+
       #layout { flex: 1; display: flex; min-height: 0; }
       /* 左侧边栏 */
-      #sidenav { flex: 0 0 118px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-right: 1px solid rgba(255,255,255,0.08); }
-      .navitem { text-align: left; border: none; border-radius: 8px; padding: 9px 10px; cursor: pointer; background: transparent; color: #c8c8d4; font-size: 13px; }
-      .navitem:hover { background: rgba(255,255,255,0.08); }
-      .navitem.active { background: rgba(90,110,200,0.95); color: #fff; }
+      #sidenav { flex: 0 0 118px; display: flex; flex-direction: column; gap: 4px; padding: 8px; border-right: 1px solid var(--border); }
+      .navitem { text-align: left; border: none; border-radius: var(--radius-control); padding: 9px 10px; cursor: pointer;
+                 background: transparent; color: var(--text-secondary); font-size: 13px; position: relative; }
+      .navitem:hover { background: var(--accent-soft); }
+      .navitem.active { background: var(--accent-soft); color: var(--accent-strong); font-weight: 600; }
+      .navitem.active::before { content: ''; position: absolute; left: -8px; top: 6px; bottom: 6px;
+                                 width: 3px; border-radius: 2px; background: var(--accent); }
       /* 右侧分页内容 */
       #pages { flex: 1; min-width: 0; overflow-y: auto; padding: 12px 16px; }
       .page { display: none; flex-direction: column; gap: 10px; }
       .page.active { display: flex; }
-      .page h2 { font-size: 13px; margin: 0 0 2px; opacity: 0.9; }
-      .hint { opacity: 0.8; line-height: 1.5; }
-      .banner-warn { background: rgba(230,160,60,0.18); border: 1px solid rgba(230,160,60,0.6); border-radius: 8px; padding: 8px 10px; line-height: 1.5; }
-      label { display: flex; flex-direction: column; gap: 4px; }
-      input { border: none; border-radius: 8px; padding: 8px; background: rgba(255,255,255,0.12); color: #f0f0f4; }
+      .page h2 { font-size: 13px; margin: 0 0 2px; color: var(--text-primary); }
+      .hint { color: var(--text-secondary); line-height: 1.5; }
+      .banner-warn { background: rgba(230,160,60,0.22); border: 1px solid rgba(200,130,40,0.55);
+                     border-radius: var(--radius-control); padding: 8px 10px; line-height: 1.5; color: var(--text-primary); }
+      label { display: flex; flex-direction: column; gap: 4px; color: var(--text-primary); }
+      input { border: 1px solid var(--border); border-radius: var(--radius-control); padding: 8px;
+              background: var(--card-bg); color: var(--text-primary); }
       /* select 用不透明底色,option 单独给高对比配色(半透明背景会让 OS 下拉列表很淡看不清) */
-      select { border: none; border-radius: 8px; padding: 8px; background: #34344a; color: #f5f5f8; }
-      select option { background: #34344a; color: #f5f5f8; }
+      select { border: 1px solid var(--border); border-radius: var(--radius-control); padding: 8px;
+               background: var(--card-bg); color: var(--text-primary); }
+      select option { background: var(--card-bg); color: var(--text-primary); }
       .row { display: flex; gap: 8px; align-items: center; }
-      button { border: none; border-radius: 8px; padding: 8px 12px; cursor: pointer; background: rgba(90,110,200,0.95); color: #fff; }
-      button.secondary { background: rgba(255,255,255,0.16); }
+      button { border: none; border-radius: var(--radius-control); padding: 8px 12px; cursor: pointer;
+               background: var(--accent); color: #fff; }
+      button.secondary { background: var(--card-bg); border: 1px solid var(--border); color: var(--text-primary); }
       /* 底部固定操作条 */
-      footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid rgba(255,255,255,0.08); }
-      #status { flex: 1; min-height: 18px; opacity: 0.85; }
+      footer { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--border); }
+      #status { flex: 1; min-height: 18px; color: var(--text-secondary); }
     </style>
   </head>
   <body>
-    <div id="app">
-      <header><h1>Kibo 设置</h1></header>
+    <div id="card">
+      <div id="titlebar">
+        <span class="t">Kibo 设置</span>
+        <button id="closeBtn" type="button" title="关闭">✕</button>
+      </div>
       <div id="layout">
         <nav id="sidenav">
           <button class="navitem" data-page="model" type="button">模型 · API</button>
@@ -104,7 +127,7 @@
             <label id="firecrawlBaseRow" style="display:none">Firecrawl Base URL(可选 · 自托管才需改)
               <input id="firecrawlBaseURL" type="text" placeholder="https://api.firecrawl.dev" />
             </label>
-            <div style="margin-top:14px;padding:10px;border:1px solid rgba(255,140,140,0.5);border-radius:8px;background:rgba(255,80,80,0.08)">
+            <div style="margin-top:14px;padding:10px;border:1px solid var(--danger-border);border-radius:8px;background:var(--danger-bg)">
               <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
                 <input id="desktopControlEnabled" type="checkbox" style="width:auto" />
                 <span>允许宠物自主截屏与控制鼠标/键盘(高风险)</span>
@@ -114,7 +137,7 @@
                 可能造成误操作或截取到敏感信息。默认关闭,开启前会再次弹窗确认。
               </div>
             </div>
-            <div style="margin-top:14px;padding:10px;border:1px solid rgba(255,140,140,0.5);border-radius:8px;background:rgba(255,80,80,0.08)">
+            <div style="margin-top:14px;padding:10px;border:1px solid var(--danger-border);border-radius:8px;background:var(--danger-bg)">
               <label style="display:flex;align-items:center;gap:8px;flex-direction:row">
                 <input id="browserControlEnabled" type="checkbox" style="width:auto" />
                 <span>允许宠物自主浏览/操作网页(高风险)</span>
@@ -164,7 +187,7 @@
               <span>启用配音(宠物回复时朗读)</span>
             </label>
 
-            <div style="margin-top:6px;padding:10px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(255,255,255,0.04)">
+            <div style="margin-top:6px;padding:10px;border:1px solid var(--border);border-radius:8px;background:var(--card-bg)">
               <div id="ttsRuntimeStatus" class="hint">运行时状态:检测中…</div>
               <label style="margin-top:8px">安装位置
                 <div class="row">
@@ -178,7 +201,7 @@
                 <button id="ttsImport" class="secondary" type="button">导入压缩包…</button>
                 <button id="ttsExport" class="secondary" type="button">导出压缩包…</button>
               </div>
-              <pre id="ttsInstallLog" style="margin-top:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;font-size:12px;display:none"></pre>
+              <pre id="ttsInstallLog" style="margin-top:8px;max-height:120px;overflow-y:auto;white-space:pre-wrap;background:rgba(0,0,0,0.3);border-radius:8px;padding:8px;font-size:12px;display:none;color:#f0f0f4"></pre>
             </div>
 
             <label>设备
