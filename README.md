@@ -11,7 +11,7 @@
 [![Electron](https://img.shields.io/badge/Electron-31-47848F.svg)](https://www.electronjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178C6.svg)](https://www.typescriptlang.org/)
 
-[下载安装](#安装打包版) · [核心特性](#核心特性) · [开发](#开发) · [宠物包](#宠物包可移植可编辑可换)
+[下载安装](#安装打包版) · [核心特性](#核心特性) · [开发](#开发) · [宠物包](#宠物包可移植可编辑可换) · [做自己的宠物](docs/making-a-pet.md)
 
 </div>
 
@@ -87,6 +87,8 @@ pnpm dist                        # 打包 Windows 安装包 → dist/Kibo Setup 
 
 整个 `pets\<id>\` 文件夹可直接拷走（U 盘 / 网盘）备份，或迁移到另一台机器 —— 性格 + 记忆一起走。设置窗内可直接**选择 / 导入**新的宠物包。
 
+想自己做一只？完整流程（美术生成 / 人设 / 台词 / GPT-SoVITS 语音克隆）见 [docs/making-a-pet.md](docs/making-a-pet.md)。
+
 ## 记忆与隐私
 
 宠物拥有分层记忆，数据存在**该宠物文件夹**的 `memory/` 里（设置窗有「打开记忆文件夹」按钮）：
@@ -107,7 +109,7 @@ pnpm dist                        # 打包 Windows 安装包 → dist/Kibo Setup 
 
 Electron · TypeScript（strict）· electron-vite · Vitest · electron-builder，主进程/渲染进程通过 `contextBridge` 暴露的最小 IPC 通信，`contextIsolation` + `sandbox` + 无 `nodeIntegration` 的安全基线。
 
-更多设计细节见 [PROGRESS.md](PROGRESS.md)；后续演进方向见 [ROADMAP.md](ROADMAP.md)。
+更多设计细节见 [PROGRESS.md](PROGRESS.md)。
 
 ## License
 
