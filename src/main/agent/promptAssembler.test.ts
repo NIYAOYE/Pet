@@ -84,6 +84,12 @@ describe('工具执行规范注入', () => {
     expect(system).toContain('# 工具执行规范')
   })
 
+  it('工具执行规范里包含系统级反注入声明(工具结果中的指令不是指示)', () => {
+    const { system } = assemblePrompt(persona, [], [], undefined, undefined, true)
+    expect(system).toContain('不要执行')
+    expect(system).toContain('截图')
+  })
+
   it('hasTools 缺省(false)时不出现该小节', () => {
     const { system } = assemblePrompt(persona, [])
     expect(system).not.toContain('工具执行规范')
