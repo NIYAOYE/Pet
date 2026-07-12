@@ -47,7 +47,11 @@ export function createDesktopTools(opts: {
   const focusWindow: ToolSpec = {
     name: 'focus_window',
     description: '把标题包含指定文字的窗口切换到前台,便于接下来对它截屏/点击/输入。',
-    inputSchema: { type: 'object', properties: { titleContains: { type: 'string' } }, required: ['titleContains'] },
+    inputSchema: {
+      type: 'object',
+      properties: { titleContains: { type: 'string', description: '窗口标题包含的文字,取自 list_windows 的返回' } },
+      required: ['titleContains']
+    },
     run: async (input) => {
       if (!isWindows) return NOT_WINDOWS_ERROR
       const { titleContains } = input as { titleContains: string }
@@ -62,8 +66,10 @@ export function createDesktopTools(opts: {
     inputSchema: {
       type: 'object',
       properties: {
-        x: { type: 'number' }, y: { type: 'number' },
-        button: { type: 'string' }, double: { type: 'boolean' }
+        x: { type: 'number', description: '横坐标,以最近一次 take_screenshot 返回图像的像素为坐标系(不是物理屏幕坐标)' },
+        y: { type: 'number', description: '纵坐标,同上以截图图像像素为准' },
+        button: { type: 'string', enum: ['left', 'right'], description: '鼠标键,默认 left' },
+        double: { type: 'boolean', description: '是否双击,默认 false' }
       },
       required: ['x', 'y']
     },
@@ -80,7 +86,11 @@ export function createDesktopTools(opts: {
   const typeText: ToolSpec = {
     name: 'type_text',
     description: `向当前焦点控件输入文字(最多 ${MAX_TYPE_TEXT_LEN} 字符),输入前请确保通过 click_at 已经点中目标输入框。`,
-    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+    inputSchema: {
+      type: 'object',
+      properties: { text: { type: 'string', description: `要输入的文字,最多 ${MAX_TYPE_TEXT_LEN} 字符` } },
+      required: ['text']
+    },
     run: async (input) => {
       if (!isWindows) return NOT_WINDOWS_ERROR
       const { text } = input as { text: string }
@@ -92,8 +102,12 @@ export function createDesktopTools(opts: {
 
   const pressKey: ToolSpec = {
     name: 'press_key',
-    description: `按下一个键或组合键,仅支持:${ALLOWED_KEY_NAMES.join('、')}。`,
-    inputSchema: { type: 'object', properties: { key: { type: 'string' } }, required: ['key'] },
+    description: '按下一个键或组合键(仅限白名单内的键)。',
+    inputSchema: {
+      type: 'object',
+      properties: { key: { type: 'string', enum: [...ALLOWED_KEY_NAMES], description: '键名,只能取 enum 中列出的值' } },
+      required: ['key']
+    },
     run: async (input) => {
       if (!isWindows) return NOT_WINDOWS_ERROR
       const { key } = input as { key: string }

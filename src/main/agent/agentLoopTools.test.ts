@@ -84,6 +84,21 @@ describe('runAgent 多轮工具循环', () => {
     expect(res.text).toBe('两轮都查完了')
   })
 
+  it('结果携带 toolsUsed:按执行顺序列出本回合用过的工具名', async () => {
+    const { spec } = searchTool()
+    const res = await runAgent({
+      ...base([[tu('t1', 'A'), tu('t2', 'B'), done], [tu('t3', 'C'), done], [text('好了'), done]], spec),
+      onText: () => {}
+    })
+    expect(res.toolsUsed).toEqual(['search', 'search', 'search'])
+  })
+
+  it('没调过工具时 toolsUsed 为空数组', async () => {
+    const { spec } = searchTool()
+    const res = await runAgent({ ...base([[text('直接回答'), done]], spec), onText: () => {} })
+    expect(res.toolsUsed).toEqual([])
+  })
+
   it('到达轮数上限:停止并返回上限说明,不再调 provider', async () => {
     const { spec, calls } = searchTool()
     const script = Array.from({ length: MAX_TOOL_ROUNDS + 3 }, (_, i) => [tu(`t${i}`, `q${i}`), done])
@@ -144,6 +159,70 @@ describe('runAgent 多轮工具循环', () => {
     expect(seenSystems[1]).not.toBe('BASE')
     expect(seenSystems[1]).toContain('轮')
     expect(seenSystems[2]).toContain('轮')
+  })
+
+  it('同一 (tool, input) 连续失败两轮:第三轮 system 里追加换方式提醒', async () => {
+    const failing: ToolSpec = {
+      name: 'clicker',
+      description: '总是点不到',
+      inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      run: async () => '点击失败:找不到元素'
+    }
+    const seenSystems: string[] = []
+    const provider = {
+      async *streamChat(req: { system: string }): AsyncIterable<StreamChunk> {
+        seenSystems.push(req.system)
+        if (seenSystems.length <= 3) {
+          yield { type: 'tool_use', toolUse: { id: `t${seenSystems.length}`, name: 'clicker', input: { text: '登录' } } }
+          yield { type: 'done' }
+        } else { yield { type: 'text', text: '好吧' }; yield { type: 'done' } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([failing]),
+      system: 'BASE',
+      messages: [{ role: 'user', content: '点登录' }],
+      maxToolRounds: 10,
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    expect(seenSystems[0]).toBe('BASE')
+    expect(seenSystems[1]).toBe('BASE') // 只失败一次还不熔断
+    expect(seenSystems[2]).toContain('连续失败')
+  })
+
+  it('同名工具但参数不同的失败:不触发换方式提醒', async () => {
+    const failing: ToolSpec = {
+      name: 'clicker',
+      description: '总是点不到',
+      inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+      run: async () => '点击失败:找不到元素'
+    }
+    const seenSystems: string[] = []
+    const provider = {
+      async *streamChat(req: { system: string }): AsyncIterable<StreamChunk> {
+        seenSystems.push(req.system)
+        if (seenSystems.length <= 3) {
+          yield { type: 'tool_use', toolUse: { id: `t${seenSystems.length}`, name: 'clicker', input: { text: `目标${seenSystems.length}` } } }
+          yield { type: 'done' }
+        } else { yield { type: 'text', text: '好吧' }; yield { type: 'done' } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([failing]),
+      system: 'BASE',
+      messages: [{ role: 'user', content: '点点点' }],
+      maxToolRounds: 10,
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    for (const s of seenSystems) expect(s).not.toContain('连续失败')
   })
 
   it('工具报错回灌(isError)不终止:模型下一轮正常收场', async () => {
@@ -226,5 +305,41 @@ describe('runAgent 多轮工具循环', () => {
     const secondCallMessages = seen[1] as Array<{ role: string; images?: unknown }>
     const toolResultMsg = secondCallMessages.find((m) => m.role === 'tool_result')
     expect(toolResultMsg?.images).toEqual([{ mimeType: 'image/jpeg', dataBase64: 'AAA' }])
+  })
+
+  it('多轮截图任务:超过保留数的旧截图在后续轮次的请求里被剥离', async () => {
+    let shots = 0
+    const imgTool: ToolSpec = {
+      name: 'shot',
+      description: '截图',
+      inputSchema: { type: 'object', properties: {}, required: [] },
+      run: async () => ({ content: `已截屏${++shots}`, images: [{ mimeType: 'image/jpeg', dataBase64: `IMG${shots}` }] })
+    }
+    const seen: Array<Array<{ role: string; content?: string; images?: unknown[] }>> = []
+    const provider = {
+      async *streamChat(req: { messages: Array<{ role: string; content?: string; images?: unknown[] }> }) {
+        // 深拷贝快照:messages 被 agentLoop 原地裁剪,存引用会看不到当时的状态
+        seen.push(JSON.parse(JSON.stringify(req.messages)))
+        if (seen.length <= 3) { yield { type: 'tool_use' as const, toolUse: { id: `t${seen.length}`, name: 'shot', input: {} } }; yield { type: 'done' as const } }
+        else { yield { type: 'text' as const, text: '完成' }; yield { type: 'done' as const } }
+      }
+    }
+    await runAgent({
+      provider,
+      registry: createToolRegistry([imgTool]),
+      system: 'sys',
+      messages: [{ role: 'user', content: '连续截三次' }],
+      maxOutputTokens: 100,
+      timeoutMs: 1000,
+      signal: new AbortController().signal,
+      onText: () => {}
+    })
+    // 第 4 轮请求:此时历史里有 3 条带图 tool_result,最早那条的图必须已被剥离
+    const results = seen[3].filter((m) => m.role === 'tool_result')
+    expect(results).toHaveLength(3)
+    expect(results[0].images).toBeUndefined()
+    expect(results[0].content).toContain('过期')
+    expect(results[1].images).toHaveLength(1)
+    expect(results[2].images).toHaveLength(1)
   })
 })

@@ -82,7 +82,10 @@ export function createTodoTools(deps: { store: TodoStore; now: () => number }): 
     description: '把某条待办标记为完成。可给 id 或 title(标题需能唯一定位)。',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string' }, title: { type: 'string' } },
+      properties: {
+        id: { type: 'string', description: '待办 id 前缀,取自 list_todos 返回的方括号内编号' },
+        title: { type: 'string', description: '待办标题(或其中一部分),需能唯一定位到一条' }
+      },
       required: []
     },
     async run(input) {
@@ -98,7 +101,10 @@ export function createTodoTools(deps: { store: TodoStore; now: () => number }): 
     description: '删除某条待办/提醒。可给 id 或 title(标题需能唯一定位)。',
     inputSchema: {
       type: 'object',
-      properties: { id: { type: 'string' }, title: { type: 'string' } },
+      properties: {
+        id: { type: 'string', description: '待办 id 前缀,取自 list_todos 返回的方括号内编号' },
+        title: { type: 'string', description: '待办标题(或其中一部分),需能唯一定位到一条' }
+      },
       required: []
     },
     async run(input) {

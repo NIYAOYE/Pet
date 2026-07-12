@@ -1,6 +1,7 @@
 export const DEFAULT_FIRECRAWL_BASE = 'https://api.firecrawl.dev'
 const SCRAPE_PATH = '/v2/scrape'
-export const MAX_CONTENT_CHARS = 12000
+// 截断/反注入实现已提为公共模块(untrusted.ts),此处再导出维持既有导入路径
+export { MAX_UNTRUSTED_CHARS as MAX_CONTENT_CHARS, truncate, wrapUntrusted } from '../untrusted'
 
 export function buildScrapeBody(url: string): Record<string, unknown> {
   return { url, formats: ['markdown'], onlyMainContent: true }
@@ -40,13 +41,6 @@ export function parseScrapeJson(json: unknown): ScrapeJson {
   return { data: data.json, url: typeof meta.url === 'string' ? meta.url : undefined }
 }
 
-export function truncate(text: string, max = MAX_CONTENT_CHARS): string {
-  return text.length > max ? `${text.slice(0, max)}\n\n(内容过长已截断)` : text
-}
-
-export function wrapUntrusted(header: string, body: string): string {
-  return `${header}\n\n${body}`
-}
 
 export interface FirecrawlClient {
   scrapeMarkdown(url: string, signal: AbortSignal): Promise<ScrapeMarkdown>
