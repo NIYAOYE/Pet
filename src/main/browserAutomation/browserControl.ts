@@ -26,7 +26,8 @@ export interface BrowserDriverFactory {
   launch(plan: LaunchPlan): Promise<DriverBrowser>
 }
 
-export interface BrowserActionResult { ok: boolean; error?: string }
+/** note:动作成功但有模型必须知道的副作用说明(如"点击开出了新标签页,已自动切换") */
+export interface BrowserActionResult { ok: boolean; error?: string; note?: string }
 export interface BrowserReadResult { ok: boolean; text?: string; error?: string }
 export interface BrowserScreenshotResult { ok: boolean; image?: ImagePart; error?: string }
 export interface TabInfo { index: number; title: string; url: string }
@@ -48,6 +49,8 @@ export interface BrowserControl {
 
 const WAIT_TIMEOUT_MS = 10000
 const SCROLL_DELTA = { page: 800, small: 200 }
+/** 点击后等这么久再看有没有新标签页:target=_blank 的新页创建略滞后于 click 返回 */
+const NEW_TAB_SETTLE_MS = 500
 
 function errMsg(e: unknown): string { return String((e as Error)?.message ?? e) }
 
@@ -64,9 +67,12 @@ export function createBrowserControl(opts: {
    *  其它设置项(如 desktopControl.enabled)不一致,让人以为改了没生效。 */
   getSettings: () => Pick<BrowserControlSettings, 'mode' | 'chromePath'>
   cdpPort?: number
+  /** 测试注入缝:点击后等待新标签页出现的时长 */
+  newTabSettleMs?: number
 }): BrowserControl {
   let browser: DriverBrowser | null = null
   let activeIndex = 0
+  const settleMs = opts.newTabSettleMs ?? NEW_TAB_SETTLE_MS
 
   async function ensureBrowser(): Promise<DriverBrowser> {
     if (browser) return browser
@@ -94,6 +100,7 @@ export function createBrowserControl(opts: {
       return r.ok ? { ok: true } : { ok: false, error: r.error }
     },
     async click(input) {
+      const pagesBefore = browser ? browser.pages().length : 0
       const r = await guard(async () => {
         const p = await activePage()
         if (input.selector) return p.clickBySelector(input.selector)
@@ -103,8 +110,17 @@ export function createBrowserControl(opts: {
       // 点击触发页面跳转时的已知误报:执行上下文在跳转过程中被销毁导致 click() 本身报错,
       // 但这基本总是意味着点击其实生效了(跳转确实发生了)。当成失败会让模型误以为没点中,
       // 浪费一整轮去"换个地方重试",真机验收复现过这个浪费轮次的模式。
-      if (!r.ok && r.error.includes('Execution context was destroyed')) return { ok: true }
-      return r.ok ? { ok: true } : { ok: false, error: r.error }
+      const clicked = r.ok || r.error.includes('Execution context was destroyed')
+      if (!clicked) return { ok: false, error: r.ok ? undefined : r.error }
+      // 点击的常见副作用:网站用 target=_blank 自开新标签页(真机复现:B 站视频卡片)。
+      // 不自动跟过去的话,截图/读文本全停留在旧页,模型会误判"点击没生效"反复重试。
+      if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs))
+      const pagesAfter = browser ? browser.pages().length : 0
+      if (pagesAfter > pagesBefore) {
+        activeIndex = pagesAfter - 1
+        return { ok: true, note: '点击后网站新开了标签页,已自动切换到新标签页;请重新截图/读取以查看新页面内容' }
+      }
+      return { ok: true }
     },
     async fillText(input) {
       const r = await guard(async () => { const p = await activePage(); await p.fillByLabel(input.text, input.value) })

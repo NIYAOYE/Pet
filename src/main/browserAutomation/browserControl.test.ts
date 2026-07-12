@@ -172,6 +172,45 @@ describe('createBrowserControl', () => {
     expect((p1.clickByText as ReturnType<typeof vi.fn>)).toHaveBeenCalledWith('y')
   })
 
+  it('点击后网站自己开了新标签页(target=_blank):自动切换过去并在结果里说明', async () => {
+    // 真机复现(B 站):点视频卡片→新标签页由网站打开→旧实现的 activeIndex 停在首页,
+    // 截图/读文本全是旧页,模型误判"点击没生效"反复重试,开出一堆重复标签页。
+    const videoPage = fakePage({ innerText: vi.fn(async () => '视频播放页正文'), url: () => 'https://b.com/video' })
+    let list: DriverPage[] = []
+    const home = fakePage({
+      innerText: vi.fn(async () => '首页正文'),
+      clickByText: vi.fn(async () => { list.push(videoPage) }) // 模拟网站开新标签
+    })
+    list = [home]
+    const browser: DriverBrowser = {
+      pages: () => list,
+      newPage: vi.fn(async () => { const p = fakePage(); list.push(p); return p }),
+      close: vi.fn(async () => {})
+    }
+    const control = createBrowserControl({
+      driverFactory: fakeFactory(browser),
+      getSettings: () => ({ enabled: true, mode: 'isolated' }),
+      newTabSettleMs: 0
+    })
+    await control.navigate('https://a.com')
+    const r = await control.click({ text: '视频卡片' })
+    expect(r.ok).toBe(true)
+    expect(r.note).toContain('新')
+    expect(await control.readText()).toEqual({ ok: true, text: '视频播放页正文' })
+  })
+
+  it('点击没有开新标签页:不切换、结果不带 note', async () => {
+    const page = fakePage()
+    const control = createBrowserControl({
+      driverFactory: fakeFactory(fakeBrowser([page])),
+      getSettings: () => ({ enabled: true, mode: 'isolated' }),
+      newTabSettleMs: 0
+    })
+    await control.navigate('https://a.com')
+    const r = await control.click({ text: '普通按钮' })
+    expect(r).toEqual({ ok: true })
+  })
+
   it('switchTab 传越界 index → ok:false,且不破坏当前活动标签页', async () => {
     const p0 = fakePage()
     const p1 = fakePage()

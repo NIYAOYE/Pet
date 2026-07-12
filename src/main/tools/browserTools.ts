@@ -38,7 +38,8 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
     run: async (input) => {
       const { text, selector } = input as { text: string; selector?: string }
       const r = await c.click({ text, selector })
-      return r.ok ? `已点击:${selector ?? text}` : `点击失败:${r.error}`
+      if (!r.ok) return `点击失败:${r.error}`
+      return r.note ? `已点击:${selector ?? text}。${r.note}` : `已点击:${selector ?? text}`
     }
   }
 
