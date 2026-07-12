@@ -36,6 +36,29 @@ describe('validateInput', () => {
   it('非对象入参报错', () => {
     expect(validateInput('str', echo.inputSchema)).not.toBeNull()
   })
+  it('enum 之外的取值报错,且报错里列出合法值', () => {
+    const schema = {
+      type: 'object',
+      properties: { direction: { type: 'string', enum: ['up', 'down'] } },
+      required: ['direction']
+    }
+    const err = validateInput({ direction: 'left' }, schema)
+    expect(err).toContain('direction')
+    expect(err).toContain('up')
+    expect(err).toContain('down')
+  })
+  it('enum 内的取值通过;可选 enum 字段缺省也通过', () => {
+    const schema = {
+      type: 'object',
+      properties: {
+        direction: { type: 'string', enum: ['up', 'down'] },
+        amount: { type: 'string', enum: ['page', 'small'] }
+      },
+      required: ['direction']
+    }
+    expect(validateInput({ direction: 'up' }, schema)).toBeNull()
+    expect(validateInput({ direction: 'down', amount: 'page' }, schema)).toBeNull()
+  })
 })
 
 describe('createToolRegistry', () => {

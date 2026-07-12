@@ -9,22 +9,26 @@ export interface ToolRegistry {
 }
 
 /**
- * 轻量入参校验(required + 顶层属性类型),不引 ajv:
+ * 轻量入参校验(required + 顶层属性类型 + enum),不引 ajv:
  * 工具入参都是模型生成的浅层对象,深层校验交给工具自身。
  */
 export function validateInput(input: unknown, schema: Record<string, unknown>): string | null {
   if (typeof input !== 'object' || input === null || Array.isArray(input)) return '入参必须是 JSON 对象'
   const obj = input as Record<string, unknown>
-  const props = (schema.properties ?? {}) as Record<string, { type?: string }>
+  const props = (schema.properties ?? {}) as Record<string, { type?: string; enum?: unknown[] }>
   for (const key of ((schema.required as string[] | undefined) ?? [])) {
     if (obj[key] === undefined || obj[key] === null) return `缺少必填参数 ${key}`
   }
   for (const [key, value] of Object.entries(obj)) {
-    const t = props[key]?.type
+    const prop = props[key]
     if (value === undefined || value === null) continue
+    const t = prop?.type
     if (t === 'string' && typeof value !== 'string') return `参数 ${key} 应为字符串`
     if (t === 'number' && typeof value !== 'number') return `参数 ${key} 应为数字`
     if (t === 'boolean' && typeof value !== 'boolean') return `参数 ${key} 应为布尔值`
+    if (prop?.enum && !prop.enum.includes(value)) {
+      return `参数 ${key} 取值不合法,只能是:${prop.enum.join('、')}`
+    }
   }
   return null
 }

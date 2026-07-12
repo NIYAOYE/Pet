@@ -7,7 +7,11 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
   const navigate: ToolSpec = {
     name: 'browser_navigate',
     description: '让浏览器跳转到指定网址。首次调用会自动启动浏览器。',
-    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: ['url'] },
+    inputSchema: {
+      type: 'object',
+      properties: { url: { type: 'string', description: '完整网址,必须以 http:// 或 https:// 开头' } },
+      required: ['url']
+    },
     run: async (input) => {
       const { url } = input as { url: string }
       const r = await c.navigate(url)
@@ -20,7 +24,10 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
     description: '按可见文字点击页面元素(按钮/链接等);不需要坐标。也可传 selector 用 CSS 选择器精确定位(高级用法)。',
     inputSchema: {
       type: 'object',
-      properties: { text: { type: 'string' }, selector: { type: 'string' } },
+      properties: {
+        text: { type: 'string', description: '目标元素上可见的文字(按钮/链接的字面文案)' },
+        selector: { type: 'string', description: '可选,CSS 选择器;提供时优先于 text 定位' }
+      },
       required: ['text']
     },
     run: async (input) => {
@@ -33,7 +40,14 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
   const fillText: ToolSpec = {
     name: 'browser_fill_text',
     description: '按标签/占位符文字定位输入框并填入内容。',
-    inputSchema: { type: 'object', properties: { text: { type: 'string' }, value: { type: 'string' } }, required: ['text', 'value'] },
+    inputSchema: {
+      type: 'object',
+      properties: {
+        text: { type: 'string', description: '输入框的标签或占位符文字,用来定位它' },
+        value: { type: 'string', description: '要填入的内容' }
+      },
+      required: ['text', 'value']
+    },
     run: async (input) => {
       const { text, value } = input as { text: string; value: string }
       const r = await c.fillText({ text, value })
@@ -67,7 +81,10 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
     description: '上下滚动当前页面。',
     inputSchema: {
       type: 'object',
-      properties: { direction: { type: 'string' }, amount: { type: 'string' } },
+      properties: {
+        direction: { type: 'string', enum: ['up', 'down'], description: '滚动方向' },
+        amount: { type: 'string', enum: ['page', 'small'], description: '滚动幅度,默认 page(一屏)' }
+      },
       required: ['direction']
     },
     run: async (input) => {
@@ -80,7 +97,11 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
   const waitFor: ToolSpec = {
     name: 'browser_wait_for',
     description: '等待指定文字出现在页面上,应对页面动态加载;超时会报错。',
-    inputSchema: { type: 'object', properties: { text: { type: 'string' } }, required: ['text'] },
+    inputSchema: {
+      type: 'object',
+      properties: { text: { type: 'string', description: '要等待出现的页面文字' } },
+      required: ['text']
+    },
     run: async (input) => {
       const { text } = input as { text: string }
       const r = await c.waitFor({ text })
@@ -103,7 +124,11 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
   const openTab: ToolSpec = {
     name: 'browser_open_tab',
     description: '新开一个标签页并设为当前操作对象,可选立即跳转到指定网址。',
-    inputSchema: { type: 'object', properties: { url: { type: 'string' } }, required: [] },
+    inputSchema: {
+      type: 'object',
+      properties: { url: { type: 'string', description: '可选,新标签页要打开的网址(http/https)' } },
+      required: []
+    },
     run: async (input) => {
       const { url } = input as { url?: string }
       const r = await c.openTab({ url })
@@ -114,7 +139,11 @@ export function createBrowserTools(opts: { control: BrowserControl }): ToolSpec[
   const switchTab: ToolSpec = {
     name: 'browser_switch_tab',
     description: '把已有的某个标签页切为当前操作对象(序号来自 browser_list_tabs)。',
-    inputSchema: { type: 'object', properties: { index: { type: 'number' } }, required: ['index'] },
+    inputSchema: {
+      type: 'object',
+      properties: { index: { type: 'number', description: '标签页序号,取自 browser_list_tabs 的返回' } },
+      required: ['index']
+    },
     run: async (input) => {
       const { index } = input as { index: number }
       const r = await c.switchTab({ index })
