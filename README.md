@@ -74,6 +74,12 @@ pnpm dist                        # 打包 Windows 安装包 → dist/Kibo Setup 
 
 ## 宠物包：可移植、可编辑、可换
 
+<div align="center">
+<img src="docs/images/juwang-greet.png" width="180" alt="橘望 —— 非官方同人二创宠物皮肤示例" />
+
+<sub>图中角色形象基于游戏《蔚蓝档案》（Blue Archive）中的角色"橘望"二次创作，仅作为本项目"宠物皮肤可自定义"的展示示例，属非商业同人创作，与游戏原厂商 Nexon Games / Yostar 无任何关联，不代表官方立场。若权利方对此有异议，请提交 issue 或联系仓库作者，会第一时间处理。</sub>
+</div>
+
 一只宠物 = 一个**自包含文件夹**，首次启动后落在用户目录 `%APPDATA%\Kibo\pets\<宠物id>\`，内含：
 
 | 文件 | 作用 |
