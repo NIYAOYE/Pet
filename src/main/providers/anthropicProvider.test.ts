@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import { withCacheBreakpoints } from './anthropicProvider'
 import { normalizeAnthropicEvents, type AnthropicStreamEventLike } from './anthropicProvider'
 import type { StreamChunk } from '@shared/llm'
 
@@ -88,5 +89,41 @@ describe('normalizeAnthropicEvents', () => {
       input: {} // JSON 不完整(截断在字符串中间),解析失败回退 {},交给 registry 校验兜底报错
     })
     expect(chunks[chunks.length - 1]).toEqual({ type: 'done', finishReason: 'length' })
+  })
+})
+
+describe('withCacheBreakpoints', () => {
+  it('system 转为带 ephemeral 断点的 text 块数组', () => {
+    const r = withCacheBreakpoints('人设内容', [{ role: 'user', content: 'hi' }])
+    expect(r.system).toEqual([
+      { type: 'text', text: '人设内容', cache_control: { type: 'ephemeral' } }
+    ])
+  })
+
+  it('最后一条消息的字符串 content 转块并打断点,之前的消息原样', () => {
+    const r = withCacheBreakpoints('s', [
+      { role: 'user', content: '第一条' },
+      { role: 'assistant', content: '回复' },
+      { role: 'user', content: '最新' }
+    ])
+    expect(r.messages[0]).toEqual({ role: 'user', content: '第一条' })
+    expect(r.messages[2].content).toEqual([
+      { type: 'text', text: '最新', cache_control: { type: 'ephemeral' } }
+    ])
+  })
+
+  it('最后一条消息已是块数组时,断点打在最后一个块上', () => {
+    const r = withCacheBreakpoints('s', [
+      { role: 'user', content: [{ type: 'tool_result', tool_use_id: 't1', content: 'ok' }, { type: 'tool_result', tool_use_id: 't2', content: 'ok2' }] }
+    ])
+    const blocks = r.messages[0].content as Array<Record<string, unknown>>
+    expect(blocks[0].cache_control).toBeUndefined()
+    expect(blocks[1].cache_control).toEqual({ type: 'ephemeral' })
+  })
+
+  it('空消息列表与空 system 不崩、原样返回', () => {
+    const r = withCacheBreakpoints('', [])
+    expect(r.system).toBe('')
+    expect(r.messages).toEqual([])
   })
 })

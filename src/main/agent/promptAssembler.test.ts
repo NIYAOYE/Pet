@@ -65,6 +65,17 @@ describe('promptAssembler 当前时间注入', () => {
     const { system } = assemblePrompt(persona, [], [], undefined)
     expect(system).not.toContain('当前时间')
   })
+  it('时间戳在 system 末尾:persona 保持稳定前缀,分钟级变化不打穿前缀缓存', () => {
+    const { system } = assemblePrompt(persona, [], [], { facts: ['用户叫小星'] }, 1_700_000_000_000)
+    expect(system.startsWith('P')).toBe(true)
+    expect(system.indexOf('# 当前时间')).toBeGreaterThan(system.indexOf('# 关于用户的记忆'))
+  })
+  it('nowMs 不同、其余相同时,两次 system 的公共前缀覆盖全部静态内容', () => {
+    const a = assemblePrompt(persona, [], [], undefined, 1_700_000_000_000).system
+    const b = assemblePrompt(persona, [], [], undefined, 1_700_000_060_000).system
+    expect(a.startsWith('P\n\nV\n\nB\n\nT')).toBe(true)
+    expect(b.startsWith('P\n\nV\n\nB\n\nT')).toBe(true)
+  })
 })
 
 describe('工具执行规范注入', () => {

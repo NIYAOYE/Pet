@@ -1,7 +1,33 @@
 import Anthropic from '@anthropic-ai/sdk'
 import type { LlmProvider, StreamChatRequest } from './llmProvider'
 import type { StreamChunk } from '@shared/llm'
-import { toAnthropicMessages } from './messageMapping'
+import { toAnthropicMessages, type AnthropicMessageLike } from './messageMapping'
+
+const EPHEMERAL = { type: 'ephemeral' as const }
+
+/**
+ * Anthropic 的 prompt caching 不是自动的,必须显式打 cache_control 断点,否则多轮
+ * 工具循环每一轮都全价重发全部历史。断点两处:system 块(缓存 tools+persona 前缀)、
+ * 最后一条消息的最后一个块(缓存整段对话,供下一轮增量复用)。纯函数,便于单测;
+ * 输入是 toAnthropicMessages 的新鲜产物,原地修改无副作用外泄。
+ */
+export function withCacheBreakpoints(
+  system: string,
+  messages: AnthropicMessageLike[]
+): { system: string | Array<Record<string, unknown>>; messages: AnthropicMessageLike[] } {
+  const sys = system
+    ? [{ type: 'text', text: system, cache_control: EPHEMERAL }]
+    : system
+  const last = messages[messages.length - 1]
+  if (last) {
+    if (typeof last.content === 'string') {
+      if (last.content) last.content = [{ type: 'text', text: last.content, cache_control: EPHEMERAL }]
+    } else if (last.content.length > 0) {
+      last.content[last.content.length - 1].cache_control = EPHEMERAL
+    }
+  }
+  return { system: sys, messages }
+}
 
 /** SDK 流事件的结构化最小集(供归一化与测试;真实事件结构兼容此形状) */
 export interface AnthropicStreamEventLike {
@@ -53,15 +79,22 @@ export function createAnthropicProvider(opts: { apiKey: string; baseURL?: string
   return {
     async *streamChat(req: StreamChatRequest): AsyncIterable<StreamChunk> {
       try {
+        const { system, messages } = withCacheBreakpoints(req.system, toAnthropicMessages(req.messages))
+        // 最后一个工具定义也打断点:agentLoop 在临近轮数上限时会改 system,此时
+        // system 断点失效,但 tools 前缀仍可命中缓存
+        const tools = req.tools?.map((t, i) => ({
+          name: t.name,
+          description: t.description,
+          input_schema: t.inputSchema,
+          ...(i === req.tools!.length - 1 ? { cache_control: EPHEMERAL } : {})
+        }))
         const stream = client.messages.stream(
           {
             model: opts.model,
             max_tokens: req.maxOutputTokens,
-            system: req.system,
-            messages: toAnthropicMessages(req.messages) as never,
-            ...(req.tools && req.tools.length > 0
-              ? { tools: req.tools.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema })) as never }
-              : {})
+            system: system as never,
+            messages: messages as never,
+            ...(tools && tools.length > 0 ? { tools: tools as never } : {})
           },
           { signal: req.signal }
         )

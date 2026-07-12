@@ -47,11 +47,13 @@ function memorySection(memory?: MemoryContext): string {
   return out
 }
 
+/** 分钟级变化的内容必须放 system 末尾:OpenAI 自动前缀缓存按最长公共前缀命中,
+ *  时间戳在开头会让后面几千 token 的 persona/技能表每分钟全量缓存失效。 */
 function timeSection(nowMs?: number): string {
   if (nowMs === undefined) return ''
   return (
-    '# 当前时间\n现在是 ' + new Date(nowMs).toLocaleString('zh-CN') +
-    '。当用户说"X分钟后/今天下午3点"等相对时间时,据此换算成绝对时间再调用工具。\n\n'
+    '\n\n# 当前时间\n现在是 ' + new Date(nowMs).toLocaleString('zh-CN') +
+    '。当用户说"X分钟后/今天下午3点"等相对时间时,据此换算成绝对时间再调用工具。'
   )
 }
 
@@ -63,14 +65,16 @@ export function assemblePrompt(
   nowMs?: number,
   hasTools = false
 ): AssembledPrompt {
+  // 拼装顺序即缓存友好度排序:静态(persona/规范/技能)在前,会话级变化(记忆召回)
+  // 次之,分钟级变化(时间)最后;agentLoop 的轮内提醒也 append 在末尾,同一原则。
   const system =
-    timeSection(nowMs) +
     [persona.persona, persona.voice, persona.behavior, persona.tools]
       .filter((s) => s.trim().length > 0)
       .join('\n\n') +
     toolExecutionSection(hasTools) +
     skillsSection(skills) +
-    memorySection(memory)
+    memorySection(memory) +
+    timeSection(nowMs)
 
   let window = transcript.slice(-WINDOW_TURNS)
   while (window.length > 0 && window[0].role !== 'user') window = window.slice(1)
