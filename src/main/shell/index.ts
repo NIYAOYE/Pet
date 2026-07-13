@@ -410,8 +410,8 @@ export function startShell(): void {
         scriptPath: voiceScriptPath,
         port: VOICE_PORT,
         voice: {
-          gptModel: join(petDir, petVoice!.gptModel),
-          sovitsModel: join(petDir, petVoice!.sovitsModel),
+          gptModel: join(petDir, petVoice!.gptModel!),
+          sovitsModel: join(petDir, petVoice!.sovitsModel!),
           refAudio: join(petDir, petVoice!.refAudio),
           refText: join(petDir, petVoice!.refText)
         },
