@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, DEFAULT_TTS_SETTINGS, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit, type TtsBackend } from '@shared/llm'
 import type { VoiceRuntimeState } from '@shared/ipc'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -34,11 +34,9 @@ let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重�
 let startedWithNoPet = false
 
 // 语音(TTS)分节控件
-// TODO(Task 2): 目前设置界面还没有 backend 选择控件(手动选择 GSV-TTS-Lite / Genie-TTS 的
-// UI 是 Task 2 的工作),这里先只做“原样回传”——加载时记下已存的 backend 值,保存时原样带
-// 回去,不会因为本页任何一次保存而悄悄把用户已选的 backend 重置成默认值。
-let loadedTtsBackend: TtsBackend = DEFAULT_TTS_SETTINGS.backend
 const ttsEnabled = $<HTMLInputElement>('ttsEnabled')
+const ttsBackend = $<HTMLSelectElement>('ttsBackend')
+const ttsBackendUnavailable = $<HTMLElement>('ttsBackendUnavailable')
 const ttsRuntimeStatus = $<HTMLElement>('ttsRuntimeStatus')
 const ttsInstallPath = $<HTMLInputElement>('ttsInstallPath')
 const ttsPickPath = $<HTMLButtonElement>('ttsPickPath')
@@ -97,7 +95,7 @@ function appendGenieInstallLog(line: string): void {
 function currentTts(): TtsSettings {
   return {
     enabled: ttsEnabled.checked,
-    backend: loadedTtsBackend,
+    backend: ttsBackend.value as TtsBackend,
     runtimeInstallPath: ttsInstallPath.value.trim(),
     device: ttsDevice.value as TtsDevice,
     useFlashAttn: ttsUseFlashAttn.checked,
@@ -118,8 +116,8 @@ function currentTts(): TtsSettings {
 }
 
 function applyTts(t: TtsSettings): void {
-  loadedTtsBackend = t.backend
   ttsEnabled.checked = t.enabled
+  ttsBackend.value = t.backend
   ttsInstallPath.value = t.runtimeInstallPath
   ttsDevice.value = t.device
   ttsUseFlashAttn.checked = t.useFlashAttn
@@ -145,6 +143,19 @@ function currentTtsGenie(): { runtimeInstallPath: string } {
 function applyTtsGenie(t: { runtimeInstallPath: string }): void {
   genieInstallPath.value = t.runtimeInstallPath
 }
+
+let activePetVoice: import('@shared/petPackage').PetVoice | undefined
+
+function refreshBackendAvailability(): void {
+  const v = activePetVoice
+  const supportsGenie = !!v?.onnxModel
+  const supportsGsv = !!(v?.gptModel && v?.sovitsModel)
+  const selected = ttsBackend.value as TtsBackend
+  const unavailable = selected === 'genie-tts' ? !supportsGenie : !supportsGsv
+  ttsBackendUnavailable.style.display = unavailable ? '' : 'none'
+}
+
+ttsBackend.addEventListener('change', refreshBackendAvailability)
 
 ttsPickPath.addEventListener('click', async () => {
   const p = await window.voiceApi.pickInstallPath()
@@ -423,6 +434,8 @@ void (async () => {
   appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
   applyTtsGenie(snap.settings.ttsGenie)
+  activePetVoice = snap.activePetVoice
+  refreshBackendAvailability()
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
