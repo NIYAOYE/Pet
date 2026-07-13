@@ -122,13 +122,13 @@ export function realSpawnGenieProcess(opts: {
  *  `ensure_exists()` 上,且每次重试都会 100% 复现同一个报错、永远不会自愈(真实用户报告复现)。
  *  所以每次进这个函数都要先无条件删干净整个目录,保证 genie_tts 看到的永远是"不存在",触发方式与
  *  上面全新安装的场景完全一致。
- *  HF_ENDPOINT 指向 hf-mirror.com:genie_tts 底层用 huggingface_hub 直连 huggingface.co 默认下载,
- *  国内网络环境下常年缓慢/超时,表现为"卡住不动"(真实用户报告的第一次尝试症状);hf-mirror.com 是
- *  huggingface_hub 官方支持的镜像重定向机制(标准环境变量,非 hack),与本项目 pip 安装那套镜像源
- *  思路一致,用于缓解同一类"国内直连太慢"的问题。
- *  HF_HUB_DOWNLOAD_TIMEOUT 从默认 10 秒调到 30 秒:确认 hf-mirror.com 本身可正常访问后,真实用户
- *  仍复现过 17 个并发文件里某一个 HEAD 请求超时导致整批下载失败(huggingface_hub 对 thread_map
- *  并发下载里的任一失败无重试,直接抛 LocalEntryNotFoundError);调大超时容忍镜像连接偏慢的情形,
+ *  不设 HF_ENDPOINT 镜像:曾经尝试过 HF_ENDPOINT=https://hf-mirror.com 来缓解"直连 huggingface.co
+ *  慢"的猜测,但实测(真实环境复现)发现这个镜像本身跟当前 huggingface_hub 版本的 HEAD 元数据校验
+ *  不兼容,必现 FileMetadataError/LocalEntryNotFoundError——是这个"修复"本身在制造后续三轮真机报错,
+ *  不是在解决问题。直连 huggingface.co 本身是能成功下载的(实测约 2-3 分钟),配合下面的 onProgress
+ *  实时进度转发,不需要镜像也能让用户看到下载确实在推进,不会再被误以为卡死。
+ *  HF_HUB_DOWNLOAD_TIMEOUT 仍保留调到 30 秒(默认 10 秒):即使不走镜像,直连也可能遇到偏慢的单个
+ *  HEAD 请求,调大超时是纯粹的容错缓冲,与上面镜像不兼容的问题相互独立,不冲突;
  *  真正的"单次失败整批崩"问题由 genie_server.py --download-data 分支自身的重试循环处理(见该文件)。
  *  opts.onProgress 把子进程 stdout 实时转发出去(而不是只在最终失败时靠有限长度的 stderr 尾巴拼凑),
  *  解决了重试期间早期尝试的失败提示被后续更长的最终 traceback 挤出 stderr 截断窗口、导致完全看不出
@@ -142,7 +142,7 @@ export function realDownloadGenieData(opts: {
   rmSync(join(opts.installDir, 'GenieData'), { recursive: true, force: true })
   const child = spawnAndWaitForReady(opts.pythonExe, [opts.scriptPath, '--download-data'], 'Genie-TTS 数据下载', {
     cwd: opts.installDir,
-    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_ENDPOINT: 'https://hf-mirror.com', HF_HUB_DOWNLOAD_TIMEOUT: '30' },
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8', HF_HUB_DOWNLOAD_TIMEOUT: '30' },
     stdin: 'y\n',
     onStdout: (chunk) => {
       for (const line of chunk.split(/\r?\n/)) {
