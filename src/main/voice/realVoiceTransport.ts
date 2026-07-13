@@ -10,8 +10,10 @@ import { createSseParser, type SseFrame } from './sseParser'
 const execFileP = promisify(execFileCb)
 
 /** spawn 一个子进程,监听 stdout 直到看到 "READY" 才算就绪;进程提前退出则拒绝,错误信息里带上 earlyExitLabel 与 Python 侧的 stderr 尾巴(通常是 traceback)。 */
-function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string, spawnOpts: { cwd?: string; env?: NodeJS.ProcessEnv } = {}): { kill(): void; waitReady(): Promise<void> } {
-  const child = spawn(pythonExe, args, { windowsHide: true, ...spawnOpts })
+function spawnAndWaitForReady(pythonExe: string, args: string[], earlyExitLabel: string, spawnOpts: { cwd?: string; env?: NodeJS.ProcessEnv; stdin?: string } = {}): { kill(): void; waitReady(): Promise<void> } {
+  const { stdin, ...nodeOpts } = spawnOpts
+  const child = spawn(pythonExe, args, { windowsHide: true, ...nodeOpts })
+  if (stdin !== undefined) { child.stdin?.end(stdin) }
   let stderrTail = ''
   child.stderr?.on('data', (buf: Buffer) => { stderrTail = (stderrTail + buf.toString('utf-8')).slice(-2000) })
 
@@ -98,23 +100,30 @@ export function realSpawnGenieProcess(opts: {
   ]
   return spawnAndWaitForReady(opts.pythonExe, args, 'Genie-TTS 语音 sidecar', {
     cwd: opts.installDir,
-    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData') }
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8' }
   })
 }
 
 /** spawn genie_server.py 的 `--download-data` 模式:只触发基础预训练模型下载(首次约 391MB)后退出。
- *  必须先在 Node 侧创建好 <installDir>/GenieData 目录(即使是空目录)——genie_tts 在 import 时如果
- *  发现这个目录不存在,会同步跑一个交互式 input() 确认下载,在无 TTY 的子进程里直接抛 EOFError 崩溃。
- *  提前建好空目录能让它跳过那个 input() 分支,再走 download_genie_data() 把内容真正下载进去。 */
+ *
+ *  不能提前在 Node 侧创建 <installDir>/GenieData 目录——genie_tts 的 Core/Resources.py 只在
+ *  "目录不存在"这一个分支里才会触发自动下载(`if not os.path.exists(GENIE_DATA_DIR): ... input(...)
+ *  -> download_genie_data()`);提前建好空目录会让这个存在性检查判真、跳过整个自动下载分支,
+ *  紧接着摔在 `ensure_exists(HUBERT_MODEL_DIR,...)` 的硬性 FileNotFoundError 上(已在真实环境复现
+ *  验证)。正确做法是让目录保持不存在,转而向子进程 stdin 喂 "y\n",顶替掉那个交互式 input() 的
+ *  人工输入,复用 genie_tts 自己"确认下载"分支里内联调用 download_genie_data() 的逻辑——同样已在
+ *  真实环境验证过,能触发完整下载(17 个资源文件)。
+ *  PYTHONIOENCODING=utf-8 同样是必须的:genie_tts 下载过程中打印的 emoji 日志在 Windows 默认 GBK
+ *  控制台编码下会直接 UnicodeEncodeError 崩溃(也已在真实环境复现验证)。 */
 export function realDownloadGenieData(opts: {
   pythonExe: string
   scriptPath: string
   installDir: string
 }): Promise<void> {
-  mkdirSync(join(opts.installDir, 'GenieData'), { recursive: true })
   const child = spawnAndWaitForReady(opts.pythonExe, [opts.scriptPath, '--download-data'], 'Genie-TTS 数据下载', {
     cwd: opts.installDir,
-    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData') }
+    env: { ...process.env, GENIE_DATA_DIR: join(opts.installDir, 'GenieData'), PYTHONIOENCODING: 'utf-8' },
+    stdin: 'y\n'
   })
   return child.waitReady()
 }
