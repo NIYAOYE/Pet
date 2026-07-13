@@ -1,4 +1,4 @@
-import { PRESETS, SETTINGS_SCHEMA_VERSION, DEFAULT_SETTINGS, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
+import { PRESETS, SETTINGS_SCHEMA_VERSION, resolvePresetId, type ProviderSettings, type ProviderKind, type SearchBackendKind, type TtsSettings, type TtsDevice, type TtsTargetLanguage, type TtsPlaybackTrigger, type TtsSynthesisChunking, type TtsTextSplit } from '@shared/llm'
 import type { VoiceRuntimeState } from '@shared/ipc'
 
 const $ = <T extends HTMLElement>(id: string): T => document.getElementById(id) as T
@@ -28,9 +28,6 @@ const noPetBanner = $<HTMLElement>('noPetBanner')
 const closeBtn = $<HTMLButtonElement>('closeBtn')
 closeBtn.addEventListener('click', () => window.close())
 let savedActivePetId = 'luluka' // 保存前的值,用于判断是否需要重启
-// ttsGenie 本页暂无 UI(见 Task 9),缓存已加载值以便保存时原样回填,避免每次保存都把它
-// 静默重置成默认值(SET_SETTINGS 是整体覆盖写,不是与已存设置合并)。
-let savedTtsGenie = DEFAULT_SETTINGS.ttsGenie
 // 本页是否是在"引导模式(无任何已装宠物包)"下打开的——见 save 按钮处理里的用法:
 // 这种情况下即便用户选中的宠物 id 恰好等于 savedActivePetId 的默认值(比如重新导入了
 // 一个同样叫 luluka 的包),应用本身也还没正常启动,任何一次成功保存都需要重启才能生效。
@@ -60,6 +57,13 @@ const ttsRepetitionPenalty = $<HTMLInputElement>('ttsRepetitionPenalty')
 const ttsIsCutText = $<HTMLInputElement>('ttsIsCutText')
 const ttsCutMinLen = $<HTMLInputElement>('ttsCutMinLen')
 const ttsCutMute = $<HTMLInputElement>('ttsCutMute')
+const genieRuntimeStatus = $<HTMLElement>('genieRuntimeStatus')
+const genieInstallPath = $<HTMLInputElement>('genieInstallPath')
+const geniePickPath = $<HTMLButtonElement>('geniePickPath')
+const genieInstall = $<HTMLButtonElement>('genieInstall')
+const genieImport = $<HTMLButtonElement>('genieImport')
+const genieExport = $<HTMLButtonElement>('genieExport')
+const genieInstallLog = $<HTMLPreElement>('genieInstallLog')
 
 function formatRuntimeState(s: VoiceRuntimeState): string {
   if (!s.installed) return '运行时状态:未安装'
@@ -68,10 +72,22 @@ function formatRuntimeState(s: VoiceRuntimeState): string {
   return `运行时状态:已安装${ver}${dev}`
 }
 
+function formatGenieRuntimeState(s: { installed: boolean; genieTtsVersion?: string }): string {
+  if (!s.installed) return '运行时状态:未安装'
+  const ver = s.genieTtsVersion ? ` · ${s.genieTtsVersion}` : ''
+  return `运行时状态:已安装${ver}`
+}
+
 function appendInstallLog(line: string): void {
   ttsInstallLog.style.display = ''
   ttsInstallLog.textContent += `${line}\n`
   ttsInstallLog.scrollTop = ttsInstallLog.scrollHeight
+}
+
+function appendGenieInstallLog(line: string): void {
+  genieInstallLog.style.display = ''
+  genieInstallLog.textContent += `${line}\n`
+  genieInstallLog.scrollTop = genieInstallLog.scrollHeight
 }
 
 function currentTts(): TtsSettings {
@@ -116,6 +132,14 @@ function applyTts(t: TtsSettings): void {
   ttsRepetitionPenalty.value = String(t.repetitionPenalty)
 }
 
+function currentTtsGenie(): { runtimeInstallPath: string } {
+  return { runtimeInstallPath: genieInstallPath.value.trim() }
+}
+
+function applyTtsGenie(t: { runtimeInstallPath: string }): void {
+  genieInstallPath.value = t.runtimeInstallPath
+}
+
 ttsPickPath.addEventListener('click', async () => {
   const p = await window.voiceApi.pickInstallPath()
   if (p) ttsInstallPath.value = p
@@ -147,6 +171,43 @@ ttsImport.addEventListener('click', async () => {
 ttsExport.addEventListener('click', async () => {
   try {
     const res = await window.voiceApi.exportArchive()
+    status.textContent = res.ok ? '✓ 导出成功' : `✗ ${res.error ?? '导出失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
+
+geniePickPath.addEventListener('click', async () => {
+  const p = await window.genieVoiceApi.pickInstallPath()
+  if (p) genieInstallPath.value = p
+})
+
+genieInstall.addEventListener('click', () => {
+  if (!genieInstallPath.value.trim()) {
+    status.textContent = '✗ 请先选择安装位置'
+    return
+  }
+  genieInstallLog.textContent = ''
+  appendGenieInstallLog('开始安装…')
+  window.genieVoiceApi.startInstall()
+})
+
+window.genieVoiceApi.onInstallProgress((p) => {
+  appendGenieInstallLog(`[${p.stage}] ${p.message}`)
+})
+
+genieImport.addEventListener('click', async () => {
+  try {
+    const res = await window.genieVoiceApi.importArchive()
+    status.textContent = res.ok ? '✓ 导入成功' : `✗ ${res.error ?? '导入失败'}`
+  } catch (err) {
+    status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
+  }
+})
+
+genieExport.addEventListener('click', async () => {
+  try {
+    const res = await window.genieVoiceApi.exportArchive()
     status.textContent = res.ok ? '✓ 导出成功' : `✗ ${res.error ?? '导出失败'}`
   } catch (err) {
     status.textContent = `✗ ${(err as Error)?.message ?? '出错了'}`
@@ -335,7 +396,7 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
       },
       appFocusLlmOpener: { enabled: appFocusLlmOpenerEnabled.checked },
       tts: currentTts(),
-      ttsGenie: savedTtsGenie
+      ttsGenie: currentTtsGenie()
     })
     if (petSelect.value !== savedActivePetId || startedWithNoPet) {
       savedActivePetId = petSelect.value
@@ -353,9 +414,9 @@ $<HTMLButtonElement>('save').addEventListener('click', async () => {
 void (async () => {
   const snap = await window.settingsApi.getSettings()
   savedActivePetId = snap.settings.activePetId
-  savedTtsGenie = snap.settings.ttsGenie
   appFocusLlmOpenerEnabled.checked = snap.settings.appFocusLlmOpener.enabled
   applyTts(snap.settings.tts)
+  applyTtsGenie(snap.settings.ttsGenie)
   await refreshPets(snap.settings.activePetId)
   preset.value = resolvePresetId(snap.settings.provider.kind, snap.settings.provider.baseURL)
   applyPreset(preset.value)
@@ -391,5 +452,13 @@ void (async () => {
     ttsRuntimeStatus.textContent = formatRuntimeState(await window.voiceApi.getState())
   } catch {
     // 无宠物包引导模式下语音子系统未接线(见 startOnboarding),这里静默即可
+  }
+})()
+
+void (async () => {
+  try {
+    genieRuntimeStatus.textContent = formatGenieRuntimeState(await window.genieVoiceApi.getState())
+  } catch {
+    // 无宠物包引导模式下语音子系统未接线,这里静默即可
   }
 })()
