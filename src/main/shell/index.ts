@@ -114,7 +114,8 @@ function startOnboarding(opts: {
     hasSearchKey: searchSecrets.hasKey(),
     hasEmbeddingKey: embeddingSecrets.hasKey(),
     hasFirecrawlKey: firecrawlSecrets.hasKey(),
-    noPetInstalled: listPets(petCatalogDirs).length === 0
+    noPetInstalled: listPets(petCatalogDirs).length === 0,
+    activePetVoice: undefined
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
     saveSettings(settingsFile, normalizeSettings(raw))
@@ -780,7 +781,8 @@ export function startShell(): void {
     hasSearchKey: searchSecrets.hasKey(),
     hasEmbeddingKey: embeddingSecrets.hasKey(),
     hasFirecrawlKey: firecrawlSecrets.hasKey(),
-    noPetInstalled: false // 走到这个 handler 说明 startShell 已经解析出一个可用宠物家目录
+    noPetInstalled: false, // 走到这个 handler 说明 startShell 已经解析出一个可用宠物家目录
+    activePetVoice: (await loadPet(petDir)).manifest.voice
   }))
   ipcMain.handle(IPC.SET_SETTINGS, async (_e, raw) => {
     const prev = loadSettings(settingsFile)
