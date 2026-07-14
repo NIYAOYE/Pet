@@ -12,8 +12,14 @@ pet.json 的 voice 字段)。
 32000Hz 单声道——这里转成 float32 再 base64,和 gsv_server.py 吐出的 PcmChunk 协议完全一致,
 渲染层 pcmPlayer.ts 不用区分后端。
 
-语言:/speak 请求体里的 language 字段按次生效(与 gsv_server.py 的 _apply_language() 同一效果),
-而不是只在启动时绑定一次就再也不变——见 do_POST 里对 genie.set_reference_audio() 的重新调用。
+语言:/speak 请求体里的 language 字段按次生效,效果对齐 gsv_server.py 的 _apply_language()——但
+genie_tts 没有对应的公开 API。set_reference_audio()/load_character() 都改不了"要合成的新文本"用
+什么语言音素化:前者的 language 只影响参考音频自身转写文本的音素(Audio/ReferenceAudio.py 的
+set_text()),后者对已加载过的角色直接短路返回、不会更新语言。目标文本真正读的语言来自
+ModelManager.character_to_language[角色名](TTSPlayer._tts_worker_loop 里 model_manager.get(...).LANGUAGE
+=> Core/Inference.py 的 GENIE.tts(..., language=...)),这个字典只在角色第一次 load_character()
+时写入一次,此后没有公开途径能改。do_POST 每次请求前直接改写这个内部字典项(见下方注释),
+不是公开 API,但目前没有更干净的公开途径。
 """
 import sys
 import json
@@ -76,7 +82,19 @@ class Handler(BaseHTTPRequestHandler):
             requested_lang = body.get("language", "auto")
             lang = requested_lang if requested_lang in ("zh", "ja", "en") else BASE_LANGUAGE
             with _infer_lock:
-                genie.set_reference_audio(CHARACTER_NAME, REF_AUDIO, REF_TEXT, language=lang)
+                # genie_tts 的公开 API(set_reference_audio/load_character)都改不了"要合成的新文本"用什么
+                # 语言音素化——那个语言是在角色第一次 load_character() 时写死进 ModelManager 内部的
+                # character_to_language 字典,之后任何公开调用都不会再更新它(load_character 对已加载
+                # 角色直接短路返回,set_reference_audio 的 language 只影响参考音频自身转写文本,两者都
+                # 不是目标文本的音素化语言)。TTSPlayer._tts_worker_loop 每次合成都会重新读这个字典
+                # (model_manager.get(character_name).LANGUAGE),所以直接改写它是唯一能在不重新加载
+                # 整个角色模型(代价高、且 load_character 对已加载角色是 no-op 做不到)的前提下,做到
+                # 按请求切换目标文本发音语言的办法——这是伸手改 genie_tts 的内部私有状态,不是公开 API,
+                # 但目前没有更干净的公开途径;如果 genie_tts 未来版本改了内部实现,这里最坏情况是又退回
+                # "始终用角色基准语言"的旧行为,不会崩溃。
+                from genie_tts.ModelManager import model_manager
+                from genie_tts.Utils.Language import normalize_language
+                model_manager.character_to_language[CHARACTER_NAME.lower()] = normalize_language(lang)
                 asyncio.run(run())
             self.wfile.write(b"event: done\ndata: {}\n\n")
             self.wfile.flush()
