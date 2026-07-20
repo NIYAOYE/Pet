@@ -64,7 +64,7 @@ electron.vite.config.ts(7,14): error TS2769: No overload matches this call.
 
 处理:按 Task 2 brief 允许的"仅当 Step4 报不兼容才最小上调"原则,把 `vite` 从 `^5.3.0` 上调到 `^6.4.3`(vite 6.x 最新 patch,而非直接跳到 vite 7,尽量保持改动最小)。`electron.vite.config.ts` 本身**未做任何改动**——升级 vite 后原有 `rollupOptions` 写法就能正常通过类型检查,说明这纯粹是类型定义版本错配,不是配置形状的破坏性变更。
 
-风险提示(留给 Task 4):`vitest@2.1.9` 的 `dependencies.vite` 硬依赖 `^5.0.0`,与项目顶层 `vite@^6.4.3` 版本不一致;`node-linker=hoisted` 下 pnpm 为 vitest 单独嵌套安装了它自己的 vite@5,`pnpm test` 未在本 Task 验证(不在 brief Step4 范围内,brief 明确测试回归是 Task 4 的职责)。
+风险提示(留给 Task 4,**Task 2 复审已解除**):`vitest@2.1.9` 的 `dependencies.vite` 硬依赖 `^5.0.0`,与项目顶层 `vite@^6.4.3` 版本不一致;`node-linker=hoisted` 下 pnpm 为 vitest 单独嵌套安装了它自己的 vite@5。复审时已实测 `pnpm test`:789/789 通过,与升级前基线完全一致——该版本错配不影响测试运行,Task 4 无需为此单独排查。
 
 `electron-builder.yml` 未做任何改动——升级到 26.15.3 后本 Task 范围内(`pnpm typecheck`/`pnpm build`)未触发它,`pnpm dist`(实际打包)未在本 Task 验证。
 
