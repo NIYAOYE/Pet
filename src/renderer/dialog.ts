@@ -1,4 +1,4 @@
-import type { ChatMessage, ChatSendAttachment } from '@shared/ipc'
+import type { ChatMessage, ChatSendAttachment, PetChatListItem } from '@shared/ipc'
 import { frameRect } from '@shared/petPackage'
 import { renderMarkdownSafe } from './markdown'
 import { groupMessages, formatClockTime } from './chatFormat'
@@ -14,6 +14,7 @@ const attachStrip = document.getElementById('attach') as HTMLElement
 const avatarEl = document.getElementById('avatar') as HTMLElement
 const petNameEl = document.getElementById('pet-name') as HTMLElement
 const headCollapseBtn = document.getElementById('headCollapse') as HTMLButtonElement
+const petListEl = document.getElementById('pet-list') as HTMLElement
 
 const MAX_ATTACH = 6
 let pending: ChatSendAttachment[] = []
@@ -34,6 +35,7 @@ function renderPending(): void {
     wrap.append(im, x)
     attachStrip.appendChild(wrap)
   })
+  reportCollapsedHeight()
 }
 
 function addPending(atts: ChatSendAttachment[]): void {
@@ -82,6 +84,44 @@ async function loadAvatar(): Promise<void> {
   ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h)
   avatarDataUrl = canvas.toDataURL()
   avatarEl.style.backgroundImage = `url(${avatarDataUrl})`
+}
+
+/** 左栏一行:头像(裁不出则退回 CSS 色块占位)+ 名字 + 末条预览;当前活跃宠物高亮且不可点。 */
+function renderPetList(items: PetChatListItem[]): void {
+  petListEl.innerHTML = ''
+  for (const it of items) {
+    const row = document.createElement('div')
+    row.className = it.active ? 'pet-row active' : 'pet-row'
+    const av = document.createElement('div')
+    av.className = 'pr-avatar'
+    if (it.avatarDataUrl) av.style.backgroundImage = `url(${it.avatarDataUrl})`
+    const text = document.createElement('div')
+    text.className = 'pr-text'
+    const name = document.createElement('div')
+    name.className = 'pr-name'
+    name.textContent = it.displayName
+    const last = document.createElement('div')
+    last.className = 'pr-last'
+    last.textContent = it.lastMessage ?? '还没聊过'
+    text.append(name, last)
+    row.append(av, text)
+    if (!it.active) row.addEventListener('click', () => { void switchTo(it.id) })
+    petListEl.appendChild(row)
+  }
+}
+
+async function refreshPetList(): Promise<void> {
+  try { renderPetList(await window.chatApi.listPetsForChat()) }
+  catch (e) { console.warn('list pets failed', e) }
+}
+
+let switching = false
+async function switchTo(petId: string): Promise<void> {
+  if (switching) return
+  switching = true
+  try { await window.chatApi.switchPet(petId) }
+  finally { switching = false }
+  // 切换结果由 onSwitched 推送驱动界面刷新,这里不直接改 UI
 }
 
 let collapsed = true
@@ -178,6 +218,16 @@ function render(messages: ChatMessage[]): void {
   history.scrollTop = history.scrollHeight
 }
 
+function reportCollapsedHeight(): void {
+  if (!collapsed) return
+  // 折叠态 #panel 为 height:auto,getBoundingClientRect().height 即内容自然高度
+  requestAnimationFrame(() => {
+    if (!collapsed) return
+    const h = Math.ceil(panel.getBoundingClientRect().height)
+    window.chatApi.reportCollapsedHeight(h)
+  })
+}
+
 function setCollapsed(c: boolean): void {
   collapsed = c
   panel.classList.toggle('collapsed', c)
@@ -185,6 +235,8 @@ function setCollapsed(c: boolean): void {
   toggleBtn.textContent = c ? '⤢' : '⤡'
   toggleBtn.title = c ? '展开' : '收起'
   window.chatApi.setSize(c)
+  reportCollapsedHeight()
+  if (!c) void refreshPetList()
 }
 
 function submit(): void {
@@ -214,6 +266,7 @@ input.addEventListener('keydown', (e) => {
 input.addEventListener('input', () => {
   input.style.height = 'auto'
   input.style.height = `${input.scrollHeight}px`
+  reportCollapsedHeight()
 })
 pickBtn.addEventListener('click', async () => {
   const atts = await window.mediaApi.pickImage()
@@ -235,7 +288,15 @@ window.addEventListener('paste', (e) => {
   }
   if (files.length) void addFiles(files)
 })
-window.chatApi.onUpdate(render)
+window.chatApi.onUpdate((messages) => {
+  render(messages)
+  void refreshPetList()
+})
+window.chatApi.onSwitched((p) => {
+  petNameEl.textContent = p.displayName          // 立即更新右栏名字(避免等 loadAvatar)
+  void loadAvatar().catch(() => { /* 头像纯装饰,失败不影响聊天功能 */ })  // 刷新右栏头像 + 内部 avatarDataUrl
+  void refreshPetList()                           // 刷新左栏高亮 + 预览
+})
 window.chatApi.onStream((text) => {
   clearStatus()
   streaming += text
@@ -268,7 +329,10 @@ window.chatApi.onStatus((text) => {
 // 渲染层是折叠态的唯一真源:窗口每次重新显示时,把当前折叠态重新告知主进程,
 // 纠正主进程窗口尺寸与面板态可能出现的不同步(否则展开后关闭再开会卡在错误尺寸,无法恢复)。
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') window.chatApi.setSize(collapsed)
+  if (document.visibilityState === 'visible') {
+    window.chatApi.setSize(collapsed)
+    reportCollapsedHeight()
+  }
 })
 
 setCollapsed(true)

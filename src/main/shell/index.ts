@@ -1,14 +1,10 @@
 import { app, ipcMain, safeStorage, screen, shell as electronShell, dialog as electronDialog, clipboard, Notification, BrowserWindow, type Tray } from 'electron'
-import { join } from 'node:path'
+import { join, basename } from 'node:path'
 import { mkdirSync, readFileSync, existsSync, writeFileSync, rmSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { execFile as execFileCb } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createAutomationControl } from '../automation/automationControl'
-import { createVoiceSidecar } from '../voice/voiceSidecar'
-import { createVoiceProvider } from '../voice/voiceProvider'
-import { createSpeechSequencer } from '../voice/speechSequencer'
-import { createLlmTranslator } from '../voice/translate'
 import { runVoiceRuntimeInstall } from '../voice/voiceRuntimeInstall'
 import { installWithMirrorFallback, type MirrorCandidate } from '../voice/pipMirrorInstall'
 import { importVoiceRuntimeArchive, exportVoiceRuntimeArchive, createAdmZipArchiveIO } from '../voice/voiceRuntimeArchive'
@@ -33,8 +29,8 @@ import {
   type TestResult,
   type VoiceRuntimeState,
   type VoiceArchiveResult,
-  type VoicePcmChunk,
-  type GenieRuntimeState
+  type GenieRuntimeState,
+  type PetChatListItem
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice } from '@shared/petPackage'
@@ -42,25 +38,24 @@ import { loadPet, petsDir } from '../petLoader'
 import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
 import { startIdleWatcher } from '../context/idleWatcher'
-import { startAppFocusWatcher } from '../context/appFocusWatcher'
-import { generateContextualLine } from '../context/contextualLineGenerator'
-import { loadPersona } from '../persona/personaLoader'
 import { createSettingsWindow } from './settingsWindow'
 import { createDialogController } from './dialogWindow'
 import { createBubbleController } from './bubbleWindow'
 import { createTodoWindow } from './todoWindow'
-import { createChatStore } from './chat'
+import { createPetSession, type PetSession, type PetSessionDeps } from './petSession'
 import { registerHotkeys, unregisterHotkeys } from './hotkeys'
 import { loadSettings, saveSettings, normalizeSettings } from '../config/settings'
 import { createSecretStore } from '../config/secrets'
 import { testConnection } from '../agent/testConnection'
 import { loadSkills } from '../skills/skillLoader'
-import { createMemoryManager } from '../memory/memoryManager'
 import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '../providers/embedder'
 import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
 import { resolvePetHome } from '../pets/resolvePetHome'
 import { listPets, importPetFolder } from '../pets/petCatalog'
+import { buildPetChatList } from '../pets/petChatList'
+import { createPetAvatarCache, resolvePetDir } from '../pets/petAvatar'
+import { loadTranscript } from '../memory/transcriptStore'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
 import { captureRegion } from '../media/screenCapture'
@@ -70,7 +65,7 @@ import type { TodoItem } from '@shared/todo'
 import {
   validateMoveDelta, validateBool, validateChatSend,
   validateKey, validateTestConnectionArg, validateTodoAdd, validateTodoId, MAX_ATTACHMENTS,
-  validateReactionCategory, validateBubbleHeight
+  validateReactionCategory, validateBubbleHeight, validateCollapsedHeight, validatePetId
 } from '@shared/ipcValidation'
 import { fixedWindowBounds, isZeroMove } from '@shared/windowPlacement'
 
@@ -163,7 +158,7 @@ export type VoiceBackendChoice = 'gsv-tts-lite' | 'genie-tts'
 /** 按用户在设置里选的后端 + 当前宠物包实际提供的模型文件,解出这次要用哪个后端。
  *  选中的后端如果宠物包没提供对应模型文件,返回 null(不可用)——不会退回另一个后端,
  *  这是设计文档明确要求的行为,不是遗漏。
- *  纯函数,独立导出以便单测覆盖这个 startVoiceIfConfigured() 里最高风险的分支决策。 */
+ *  纯函数,独立导出以便单测覆盖这个 PetSession.startVoice() 里最高风险的分支决策。 */
 export function resolveVoiceBackend(petVoice: PetVoice, selected: TtsBackend): VoiceBackendChoice | null {
   if (selected === 'genie-tts') return petVoice.onnxModel ? 'genie-tts' : null
   return (petVoice.gptModel && petVoice.sovitsModel) ? 'gsv-tts-lite' : null
@@ -206,8 +201,10 @@ export function startShell(): void {
     startOnboarding({ appRoot, preload, rendererUrl, dirname, userData, settingsFile, petCatalogDirs })
     return
   }
-  const { petHome, memoryDir } = resolved.petHome
-  const petDir = petHome
+  // resolvePetHome 可能因 configuredPetId 无对应包而回退到 defaultPetId,故真正落地的宠物
+  // 未必是 configuredPetId;从解析出的家目录路径取 basename 得到"实际生效的 petId",传给
+  // createPetSession(其内部会再跑一次幂等的 ensurePetHome,已存在则不重复复制/迁移)。
+  const effectivePetId = basename(resolved.petHome.petHome)
   const secrets = createSecretStore(join(userData, 'secrets.bin'), safeStorage)
   const searchSecrets = createSecretStore(join(userData, 'secrets-tavily.bin'), safeStorage)
   const embeddingSecrets = createSecretStore(join(userData, 'secrets-embedding.bin'), safeStorage)
@@ -268,7 +265,7 @@ export function startShell(): void {
     onOpened: () => {
       clearAmbientLine()
       emitPetEvent('dialogOpen')
-      dialog.pushUpdate(chat.messages())
+      dialog.pushUpdate(session.messages())
       refreshBubble() // 折叠态打开:此刻无本轮内容 → 保持隐藏(界面干净)
     },
     onClosed: () => {
@@ -299,7 +296,6 @@ export function startShell(): void {
       getKey: () => resolveEmbeddingKey(s, embeddingSecrets.getKey(), secrets.getKey())
     })
   }
-  const memory = createMemoryManager({ dir: memoryDir, getEmbedder })
   // 待办是用户的、非宠物皮肤的数据——全局存储,换宠物(petHome 会变)也不能丢/分叉待办
   const todoStore = createTodoStore({ file: join(userData, 'todos.json') })
 
@@ -313,24 +309,6 @@ export function startShell(): void {
     execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr }))
   })
 
-  const appFocusWatcher = startAppFocusWatcher(petDir, {
-    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr })),
-    onMatch: (line) => {
-      if (dialog.isOpen()) return // 对话框开着不触发,与 showAmbientLine 的兜底一致
-      pendingAppFocusText = line.text
-      petWin.webContents.send(IPC.CONTEXT_SIGNAL, 'app_focus')
-    },
-    generateOpener: async ({ processName, windowTitle }) => {
-      const settings = loadSettings(settingsFile)
-      if (!settings.appFocusLlmOpener.enabled) return null
-      const key = secrets.getKey()
-      if (!key) return null
-      const persona = loadPersona(petDir)
-      const provider = createProvider(settings.provider, key)
-      return generateContextualLine({ personaText: persona.persona, processName, windowTitle, provider })
-    }
-  })
-
   const browserControl = createBrowserControl({
     driverFactory: createPlaywrightDriverFactory(),
     getSettings: () => loadSettings(settingsFile).browserControl
@@ -341,10 +319,11 @@ export function startShell(): void {
   // time, so it must not be built until the real name is known — a placeholder assigned
   // by-value here would never propagate into the already-created window. Deferred to the
   // loadPet(...).then() callback; show()/hide() below no-op safely if called before it resolves.
+  // controlIndicator 保持全局单例(不进 PetSession):它被 indicatorGate 的 show/hide 闭包引用,
+  // 挪进会话会牵连 indicatorGate 的重建。实际构造推迟到下方 session 建好后 loadPet(session.petDir)
+  // 的回调里(需要真实宠物名);show()/hide() 在其解析前调用会安全 no-op。已知小瑕疵:换宠物后
+  // 指示器显示名停留在初始宠物名——桌面控制默认关闭,优先级低,不在本计划范围内修。
   let controlIndicator: ReturnType<typeof createControlIndicator> | null = null
-  void loadPet(petDir)
-    .then((p) => { controlIndicator = createControlIndicator(p.manifest.displayName) })
-    .catch(() => { controlIndicator = createControlIndicator('宠物') })
 
   const lastAiPos = createLastAiPosTracker()
   let manualOverrideWatch: ReturnType<typeof startManualOverrideWatch> | null = null
@@ -364,7 +343,7 @@ export function startShell(): void {
           return { x: Math.round(p.x * d.scaleFactor), y: Math.round(p.y * d.scaleFactor) }
         },
         getLastAiPos: () => lastAiPos.get(),
-        onOverride: () => { chat.cancel() }
+        onOverride: () => { session.chat.cancel() }
       })
     },
     () => {
@@ -419,114 +398,24 @@ export function startShell(): void {
     return { installed: true, installPath, genieTtsVersion: marker!.genieTtsVersion }
   }
 
-  let voiceProviderInstance: ReturnType<typeof createVoiceProvider> | null = null
-  let speechSequencerInstance: ReturnType<typeof createSpeechSequencer> | null = null
-  let voiceSidecarInstance: ReturnType<typeof createVoiceSidecar> | null = null
-
-  async function startVoiceIfConfigured(): Promise<void> {
-    const s = loadSettings(settingsFile)
-    if (!s.tts.enabled) return
-    let petVoice: import('@shared/petPackage').PetVoice | undefined
-    try {
-      petVoice = (await loadPet(petDir)).manifest.voice
-    } catch {
-      return
-    }
-    if (!petVoice) return
-
-    const backend = resolveVoiceBackend(petVoice, s.tts.backend)
-    if (backend === null) {
-      console.warn(`[voice] 当前宠物不提供 ${s.tts.backend === 'genie-tts' ? 'Genie-TTS' : 'GSV-TTS-Lite'} 需要的模型文件,本次运行语音功能不可用`)
-      return
-    }
-    let sidecar: ReturnType<typeof createVoiceSidecar>
-
-    if (backend === 'genie-tts') {
-      const state = getGenieRuntimeState()
-      if (!state.installed) {
-        console.warn('[voice] 该宠物需要 Genie-TTS 运行时,请到设置安装;本次运行语音功能不可用')
-        return
-      }
-      sidecar = createVoiceSidecar({
-        port: GENIE_VOICE_PORT,
-        spawnProcess: () => realSpawnGenieProcess({
-          pythonExe: geniePythonExe(state.installPath),
-          scriptPath: genieScriptPath,
-          port: GENIE_VOICE_PORT,
-          voice: {
-            onnxModel: join(petDir, petVoice!.onnxModel!),
-            refAudio: join(petDir, petVoice!.refAudio),
-            refText: join(petDir, petVoice!.refText),
-            language: petVoice!.language!
-          },
-          installDir: state.installPath
-        }),
-        postSse: realPostSse
-      })
-    } else {
-      const state = getVoiceRuntimeState()
-      if (!state.installed) return
-      sidecar = createVoiceSidecar({
-        port: VOICE_PORT,
-        spawnProcess: () => realSpawnProcess({
-          pythonExe: voicePythonExe(state.installPath),
-          scriptPath: voiceScriptPath,
-          port: VOICE_PORT,
-          voice: {
-            gptModel: join(petDir, petVoice!.gptModel!),
-            sovitsModel: join(petDir, petVoice!.sovitsModel!),
-            refAudio: join(petDir, petVoice!.refAudio),
-            refText: join(petDir, petVoice!.refText)
-          },
-          device: s.tts.device,
-          useFlashAttn: s.tts.useFlashAttn,
-          modelsDir: voiceModelsDir(state.installPath)
-        }),
-        postSse: realPostSse
-      })
-    }
-
-    try {
-      await sidecar.start()
-    } catch (e) {
-      console.warn('[voice] sidecar 启动失败,本次运行语音功能不可用', e)
-      return
-    }
-    voiceSidecarInstance = sidecar
-
-    const translatorProvider = createProviderForVoice() // 见下方辅助函数
-    voiceProviderInstance = createVoiceProvider({
-      sidecar,
-      translator: createLlmTranslator(translatorProvider),
-      getSettings: () => loadSettings(settingsFile).tts,
-      onError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
-    })
-    const vp = voiceProviderInstance
-    speechSequencerInstance = createSpeechSequencer({
-      speakOne: (text, onChunk) => vp.speak(text, onChunk),
-      onChunk: (c: VoicePcmChunk) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
-      getSettings: () => loadSettings(settingsFile).tts,
-      stopUnderlying: () => vp.stop()
-    })
-  }
-
-  function createProviderForVoice() {
-    const s = loadSettings(settingsFile)
-    const key = secrets.getKey()
-    return createProvider(s.provider, key ?? '')
-  }
-
-  void startVoiceIfConfigured()
-
-  const chat = createChatStore({
-    petDir,
-    skills,
-    memory,
-    todoStore,
+  // 宠物作用域件(memory/chat/appFocus/voice)全部收进 PetSession 工厂,以便后续任务
+  // (Task 7)不重启即可重建这一捆绑来热切换宠物。跨会话共享的全局件(indicatorGate、
+  // browserControl、todoStore、secrets 门面、渲染层推送等)在此处建一次,以回调/取值器注入。
+  const sessionDeps: PetSessionDeps = {
+    userData,
+    bundledPetsDir: petCatalogDirs.bundledPetsDir,
+    legacyMemoryDir,
+    defaultPetId,
     loadSettings: () => loadSettings(settingsFile),
     getKey: () => secrets.getKey(),
     getSearchKey: () => searchSecrets.getKey(),
     getFirecrawlKey: () => firecrawlSecrets.getKey(),
+    getEmbedder,
+    skills,
+    todoStore,
+    petWin,
+    execFile: (script) => execFileP('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', script], { windowsHide: true }).then((r) => ({ stdout: r.stdout, stderr: r.stderr })),
+    createProvider,
     buildDesktopTools: () => createDesktopTools({
       platform: process.platform,
       automation: automationWithTracking,
@@ -558,12 +447,85 @@ export function startShell(): void {
       bubbleHasContent = true; refreshBubble(); bubble.pushError(m)
     },
     openSettings: () => openSettings(),
-    voice: {
-      getSettings: () => loadSettings(settingsFile).tts,
-      speak: (text) => speechSequencerInstance?.speak(text),
-      stop: () => speechSequencerInstance?.stop()
+    onAppFocusMatch: (lineText) => {
+      if (dialog.isOpen()) return // 对话框开着不触发,与 showAmbientLine 的兜底一致
+      pendingAppFocusText = lineText
+      petWin.webContents.send(IPC.CONTEXT_SIGNAL, 'app_focus')
+    },
+    voiceDeps: {
+      getVoiceRuntimeState,
+      getGenieRuntimeState,
+      resolveVoiceBackend,
+      ports: { gsv: VOICE_PORT, genie: GENIE_VOICE_PORT },
+      scriptPaths: { gsv: voiceScriptPath, genie: genieScriptPath },
+      spawnGsv: realSpawnProcess,
+      spawnGenie: realSpawnGenieProcess,
+      postSse: realPostSse,
+      onAudioChunk: (c) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
+      onAudioError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
     }
+  }
+
+  let session = createPetSession(effectivePetId, sessionDeps)
+  session.startVoice()
+
+  const petAvatarCache = createPetAvatarCache()
+
+  ipcMain.handle(IPC.CHAT_LIST_PETS, async (): Promise<PetChatListItem[]> => {
+    const pets = listPets(petCatalogDirs)
+    return buildPetChatList({
+      pets,
+      activeId: session.petId,
+      activeMessages: session.messages(),
+      peekLast: (petId) => {
+        const dir = resolvePetDir(petId, petCatalogDirs)
+        const t = loadTranscript(join(dir, 'memory', 'transcript.json'))
+        return t.messages[t.messages.length - 1]
+      },
+      avatarOf: (petId) => petAvatarCache.avatarOf(resolvePetDir(petId, petCatalogDirs), petId)
+    })
   })
+
+  async function switchPet(petId: string): Promise<boolean> {
+    if (petId === session.petId) return false
+    if (!listPets(petCatalogDirs).some((p) => p.id === petId)) {
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '找不到这只宠物')
+      return false
+    }
+    // 先建后弃:新会话构建成功才 dispose 旧的,失败则旧会话原封不动
+    let next: PetSession
+    try {
+      next = createPetSession(petId, sessionDeps)
+    } catch (e) {
+      console.warn('[switchPet] 新会话构建失败,保留当前宠物', e)
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '切换失败,已保留当前宠物')
+      return false
+    }
+    await session.dispose()          // 停旧语音(释放端口)、停 appFocus、取消在途
+    session = next
+    session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
+    saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
+    petWin.webContents.send(IPC.PET_CHANGED)     // 渲染层重载精灵
+    dialog.pushUpdate(session.messages())        // 右栏历史热切换
+    const loaded = await loadPet(session.petDir).catch(() => null)
+    dialog.window()?.webContents.send(IPC.PET_SWITCHED, {
+      petId, displayName: loaded?.manifest.displayName ?? petId
+    })
+    // 清跨宠物残留气泡
+    clearAmbientLine(); bubbleHasContent = false; bubble.clear(); bubble.hide()
+    return true
+  }
+
+  ipcMain.handle(IPC.SWITCH_PET, async (_e, raw): Promise<boolean> => {
+    const id = validatePetId(raw)
+    if (!id) return false
+    return switchPet(id)
+  })
+
+  // controlIndicator 现在读 session.petDir(与旧 petDir 等价);仍是上面声明的全局单例。
+  void loadPet(session.petDir)
+    .then((p) => { controlIndicator = createControlIndicator(p.manifest.displayName) })
+    .catch(() => { controlIndicator = createControlIndicator('宠物') })
 
   const todoPanelHtml = join(dirname, '../renderer/todoPanel.html')
   const todoWin = createTodoWindow({
@@ -651,7 +613,7 @@ export function startShell(): void {
     walkPreciseY = null
   })
 
-  ipcMain.handle(IPC.GET_PET, async () => loadPet(petDir))
+  ipcMain.handle(IPC.GET_PET, async () => loadPet(session.petDir))
   ipcMain.handle(IPC.GET_WINDOW_BOUNDS, async (): Promise<WindowBounds> => {
     const [x, y] = petWin.getPosition()
     const [width, height] = petWin.getSize()
@@ -721,10 +683,10 @@ export function startShell(): void {
   ipcMain.on(IPC.CHAT_SEND, (_e, raw) => {
     const payload = validateChatSend(raw)
     if (!payload) return
-    chat.handleSend(payload)
+    session.chat.handleSend(payload)
   })
   ipcMain.on(IPC.CANCEL_CHAT, () => {
-    chat.cancel()
+    session.chat.cancel()
     petWin.webContents.send(IPC.VOICE_PLAYBACK_STOP)
   })
   ipcMain.on(IPC.PET_SPEAK, (_e, raw) => {
@@ -733,7 +695,7 @@ export function startShell(): void {
     if (dialog.isOpen()) return // 对话框开着不冒话
     const line = category === 'app_focus'
       ? (pendingAppFocusText ? { text: pendingAppFocusText } : null)
-      : pickLine(loadLines(petDir), category, lastLineText ?? undefined)
+      : pickLine(loadLines(session.petDir), category, lastLineText ?? undefined)
     if (category === 'app_focus') pendingAppFocusText = null
     if (!line) return // lines.json 缺失/该 category 为空/app_focus 无暂存台词 → 静默降级
     lastLineText = line.text
@@ -782,7 +744,7 @@ export function startShell(): void {
   ipcMain.handle(IPC.GET_SETTINGS, async (): Promise<SettingsSnapshot> => {
     let activePetVoice: PetVoice | undefined
     try {
-      activePetVoice = (await loadPet(petDir)).manifest.voice
+      activePetVoice = (await loadPet(session.petDir)).manifest.voice
     } catch {
       activePetVoice = undefined
     }
@@ -857,8 +819,8 @@ export function startShell(): void {
     return result.response === 1
   })
   ipcMain.on(IPC.OPEN_MEMORY_DIR, () => {
-    mkdirSync(memoryDir, { recursive: true })
-    void electronShell.openPath(memoryDir)
+    mkdirSync(session.memoryDir, { recursive: true })
+    void electronShell.openPath(session.memoryDir)
   })
   ipcMain.handle(IPC.TEST_CONNECTION, async (_e, raw): Promise<TestResult> => {
     const arg = validateTestConnectionArg(raw)
@@ -1047,13 +1009,18 @@ export function startShell(): void {
     return exportVoiceRuntimeArchive({ srcDir: s.ttsGenie.runtimeInstallPath, zipPath: r.filePath, io: createAdmZipArchiveIO() })
   })
 
-  ipcMain.on(IPC.VOICE_STOP, () => speechSequencerInstance?.stop())
+  ipcMain.on(IPC.VOICE_STOP, () => session.stopSpeech())
   ipcMain.on(IPC.DIALOG_SET_SIZE, (_e, raw) => {
     const collapsed = validateBool(raw)
     if (collapsed === null) return
     dialog.setSize(collapsed)
     dialogCollapsed = collapsed
     refreshBubble() // 展开→隐藏气泡(回复走对话框 history);折叠→有内容则显示
+  })
+  ipcMain.on(IPC.DIALOG_REPORT_COLLAPSED_HEIGHT, (_e, raw) => {
+    const h = validateCollapsedHeight(raw)
+    if (h === null) return
+    dialog.setCollapsedHeight(h)
   })
   ipcMain.on(IPC.QUIT, () => app.quit())
 
@@ -1080,7 +1047,7 @@ export function startShell(): void {
     onSettings: openSettings,
     onQuickAction: (id) => {
       if (!dialog.isOpen()) dialog.toggle(petBounds) // 没开先弹出,用户才看得到流式结果
-      chat.runQuickAction(id)
+      session.chat.runQuickAction(id)
     },
     onTodos: () => todoWin.open()
   })
@@ -1089,5 +1056,5 @@ export function startShell(): void {
 
   if (!secrets.hasKey()) openSettings()
 
-  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); appFocusWatcher.stop(); void browserControl.close(); voiceSidecarInstance?.stop() })
+  app.on('will-quit', () => { unregisterHotkeys(); scheduler.stop(); idleWatcher.stop(); void browserControl.close(); void session.dispose() })
 }

@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   validateMoveDelta, validateBool, validateChatSend, validateOverlayRect,
   validateKey, validateProviderSettings, validateTestConnectionArg,
-  validateTodoAdd, validateTodoId, validateReactionCategory, validateBubbleHeight
+  validateTodoAdd, validateTodoId, validateReactionCategory, validateBubbleHeight, validateCollapsedHeight,
+  validatePetId
 } from './ipcValidation'
 
 describe('validateMoveDelta', () => {
@@ -159,5 +160,35 @@ describe('validateBubbleHeight', () => {
     expect(validateBubbleHeight(5001)).toBeNull()
     expect(validateBubbleHeight('120')).toBeNull()
     expect(validateBubbleHeight(null)).toBeNull()
+  })
+})
+
+describe('validateCollapsedHeight', () => {
+  it('接受合法有限非负数', () => {
+    expect(validateCollapsedHeight(52)).toBe(52)
+    expect(validateCollapsedHeight(0)).toBe(0)
+    expect(validateCollapsedHeight(400)).toBe(400)
+  })
+  it('拒绝负数/NaN/Infinity/超上限/非数字', () => {
+    expect(validateCollapsedHeight(-1)).toBeNull()
+    expect(validateCollapsedHeight(NaN)).toBeNull()
+    expect(validateCollapsedHeight(Infinity)).toBeNull()
+    expect(validateCollapsedHeight(401)).toBeNull()
+    expect(validateCollapsedHeight('52')).toBeNull()
+    expect(validateCollapsedHeight(null)).toBeNull()
+  })
+})
+
+describe('validatePetId', () => {
+  it('接受合法 id(字母数字下划线连字符)', () => {
+    expect(validatePetId('luluka')).toBe('luluka')
+    expect(validatePetId('pet_01-a')).toBe('pet_01-a')
+  })
+  it('拒绝空/含分隔符/路径穿越/非字符串', () => {
+    expect(validatePetId('')).toBeNull()
+    expect(validatePetId('a/b')).toBeNull()
+    expect(validatePetId('../x')).toBeNull()
+    expect(validatePetId('a.b')).toBeNull()
+    expect(validatePetId(123)).toBeNull()
   })
 })
