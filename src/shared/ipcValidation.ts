@@ -104,3 +104,7 @@ export function validateReactionCategory(v: unknown): ReactionCategory | null {
 export function validateBubbleHeight(v: unknown): number | null {
   return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 5000 ? v : null
 }
+
+export function validateCollapsedHeight(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && v >= 0 && v <= 400 ? v : null
+}
