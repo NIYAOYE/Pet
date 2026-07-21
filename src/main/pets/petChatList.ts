@@ -26,7 +26,8 @@ export function buildPetChatList(input: PetChatListInput): PetChatListItem[] {
       id: p.id,
       displayName: p.displayName,
       avatarDataUrl: input.avatarOf(p.id),
-      active: p.id === input.activeId
+      active: p.id === input.activeId,
+      renderReady: p.renderReady
     }
     const preview = previewOf(last)
     if (preview !== undefined) { item.lastMessage = preview; item.lastMessageTime = last?.timestamp }

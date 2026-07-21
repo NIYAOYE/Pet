@@ -91,7 +91,11 @@ function renderPetList(items: PetChatListItem[]): void {
   petListEl.innerHTML = ''
   for (const it of items) {
     const row = document.createElement('div')
-    row.className = it.active ? 'pet-row active' : 'pet-row'
+    const classes = ['pet-row']
+    if (it.active) classes.push('active')
+    if (!it.renderReady) classes.push('disabled')
+    row.className = classes.join(' ')
+    if (!it.renderReady) row.title = '渲染引擎未就绪'
     const av = document.createElement('div')
     av.className = 'pr-avatar'
     if (it.avatarDataUrl) av.style.backgroundImage = `url(${it.avatarDataUrl})`
@@ -102,10 +106,10 @@ function renderPetList(items: PetChatListItem[]): void {
     name.textContent = it.displayName
     const last = document.createElement('div')
     last.className = 'pr-last'
-    last.textContent = it.lastMessage ?? '还没聊过'
+    last.textContent = it.renderReady ? (it.lastMessage ?? '还没聊过') : '渲染引擎未就绪'
     text.append(name, last)
     row.append(av, text)
-    if (!it.active) row.addEventListener('click', () => { void switchTo(it.id) })
+    if (!it.active && it.renderReady) row.addEventListener('click', () => { void switchTo(it.id) })
     petListEl.appendChild(row)
   }
 }

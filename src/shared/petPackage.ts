@@ -65,3 +65,91 @@ export function parsePetManifest(raw: unknown): PetManifest {
   }
   return m as PetManifest
 }
+
+export interface Live2DViewport { width: number; height: number; resolutionCap: number }
+export interface Live2DTransform {
+  scale: number; offsetX: number; offsetY: number
+  anchorX: number; anchorY: number
+  bubbleAnchorX: number; bubbleAnchorY: number
+}
+export interface Live2DInteraction { mirrorOnWalk: boolean; mouseTracking: boolean; lipSyncParameter: string }
+export interface Live2DStateMapEntry {
+  motionGroup?: string
+  selection?: 'random' | 'sequential' | number
+  loop?: boolean
+  expression?: string
+  lipSync?: boolean
+  fallback?: string
+  /** 给未来 LLM 状态选择机制读的自然语言描述;Phase 2 只存不用。 */
+  description?: string
+}
+export interface Live2DRender {
+  type: 'live2d'
+  model: string
+  viewport: Live2DViewport
+  transform: Live2DTransform
+  interaction: Live2DInteraction
+  stateMap: Record<string, Live2DStateMapEntry>
+}
+export interface Live2DManifest {
+  schemaVersion: 2
+  id: string; displayName: string; description: string
+  thumbnail?: string
+  render: Live2DRender
+}
+
+/** 便宜的判别式检查,不做完整校验;用来决定该走哪个解析器。 */
+export function isLive2DManifestRaw(raw: unknown): boolean {
+  const r = raw as Record<string, any>
+  return !!(r && typeof r === 'object' && r.render && typeof r.render === 'object' && r.render.type === 'live2d')
+}
+
+export function parseLive2DManifest(raw: unknown): Live2DManifest {
+  const m = raw as Record<string, any>
+  assert(m && typeof m === 'object', 'manifest must be an object')
+  assert(m.schemaVersion === 2, 'manifest.schemaVersion must be 2 for a live2d package')
+  for (const k of ['id', 'displayName', 'description']) {
+    assert(typeof m[k] === 'string' && m[k].length > 0, `manifest.${k} must be a non-empty string`)
+  }
+  if (m.thumbnail !== undefined) {
+    assert(typeof m.thumbnail === 'string' && m.thumbnail.length > 0, 'manifest.thumbnail must be a non-empty string when present')
+  }
+  const r = m.render
+  assert(r && typeof r === 'object', 'manifest.render is required')
+  assert(r.type === 'live2d', 'manifest.render.type must be "live2d"')
+  assert(typeof r.model === 'string' && r.model.length > 0, 'manifest.render.model must be a non-empty string')
+
+  const vp = r.viewport
+  assert(vp && typeof vp === 'object', 'manifest.render.viewport is required')
+  for (const k of ['width', 'height', 'resolutionCap']) {
+    assert(typeof vp[k] === 'number' && vp[k] > 0, `manifest.render.viewport.${k} must be a positive number`)
+  }
+
+  const tr = r.transform
+  assert(tr && typeof tr === 'object', 'manifest.render.transform is required')
+  for (const k of ['scale', 'offsetX', 'offsetY', 'anchorX', 'anchorY', 'bubbleAnchorX', 'bubbleAnchorY']) {
+    assert(typeof tr[k] === 'number', `manifest.render.transform.${k} must be a number`)
+  }
+
+  const it = r.interaction
+  assert(it && typeof it === 'object', 'manifest.render.interaction is required')
+  assert(typeof it.mirrorOnWalk === 'boolean', 'manifest.render.interaction.mirrorOnWalk must be a boolean')
+  assert(typeof it.mouseTracking === 'boolean', 'manifest.render.interaction.mouseTracking must be a boolean')
+  assert(typeof it.lipSyncParameter === 'string' && it.lipSyncParameter.length > 0, 'manifest.render.interaction.lipSyncParameter must be a non-empty string')
+
+  const sm = r.stateMap
+  assert(sm && typeof sm === 'object', 'manifest.render.stateMap is required (may be empty)')
+  for (const key of Object.keys(sm)) {
+    const e = sm[key]
+    assert(e && typeof e === 'object', `manifest.render.stateMap.${key} must be an object`)
+    if (e.motionGroup !== undefined) assert(typeof e.motionGroup === 'string', `manifest.render.stateMap.${key}.motionGroup must be a string`)
+    if (e.selection !== undefined) assert(e.selection === 'random' || e.selection === 'sequential' || typeof e.selection === 'number', `manifest.render.stateMap.${key}.selection must be "random"/"sequential"/number`)
+    if (e.loop !== undefined) assert(typeof e.loop === 'boolean', `manifest.render.stateMap.${key}.loop must be a boolean`)
+    if (e.expression !== undefined) assert(typeof e.expression === 'string', `manifest.render.stateMap.${key}.expression must be a string`)
+    if (e.lipSync !== undefined) assert(typeof e.lipSync === 'boolean', `manifest.render.stateMap.${key}.lipSync must be a boolean`)
+    if (e.fallback !== undefined) assert(typeof e.fallback === 'string', `manifest.render.stateMap.${key}.fallback must be a string`)
+    if (e.description !== undefined) assert(typeof e.description === 'string', `manifest.render.stateMap.${key}.description must be a string`)
+  }
+
+  return m as Live2DManifest
+}

@@ -36,6 +36,8 @@
       .pet-row.active { background: var(--accent-soft); }
       .pet-row.active::before { content: ''; position: absolute; left: 0; top: 0; bottom: 0;
                                 width: 3px; background: var(--accent); }
+      .pet-row.disabled { cursor: default; opacity: 0.5; }
+      .pet-row.disabled:hover { background: none; }
       .pet-row .pr-avatar { width: 34px; height: 34px; border-radius: 50%; flex-shrink: 0;
                             background-color: var(--accent-soft); background-size: cover; background-position: center; }
       .pet-row .pr-text { min-width: 0; display: flex; flex-direction: column; gap: 1px; }

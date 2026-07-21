@@ -119,3 +119,77 @@ describe('parsePetManifest voice 字段(可选)', () => {
     })).toThrow(/language/)
   })
 })
+
+import { parseLive2DManifest, isLive2DManifestRaw } from './petPackage'
+
+const validLive2D = {
+  schemaVersion: 2,
+  id: 'chitose', displayName: '千岁', description: 'x',
+  render: {
+    type: 'live2d',
+    model: 'model/character.model3.json',
+    viewport: { width: 360, height: 480, resolutionCap: 1.5 },
+    transform: { scale: 1, offsetX: 0, offsetY: 0, anchorX: 0.5, anchorY: 1, bubbleAnchorX: 0.5, bubbleAnchorY: 0 },
+    interaction: { mirrorOnWalk: true, mouseTracking: true, lipSyncParameter: 'ParamMouthOpenY' },
+    stateMap: {
+      idle: { motionGroup: 'Idle', selection: 'random', loop: true },
+      greet: { motionGroup: 'TapBody', selection: 'random', loop: false, fallback: 'idle', description: '被点击时的问候动作' }
+    }
+  }
+}
+
+describe('isLive2DManifestRaw', () => {
+  it('true when render.type is live2d', () => {
+    expect(isLive2DManifestRaw(validLive2D)).toBe(true)
+  })
+  it('false for legacy sprite manifest (no render field)', () => {
+    const valid = {
+      id: 'luluka', displayName: '露露卡', description: 'x', spritesheetPath: 'spritesheet.webp',
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 }, animations: { idle: { row: 0, frames: 6, fps: 5, loop: true } }
+    }
+    expect(isLive2DManifestRaw(valid)).toBe(false)
+  })
+  it('false for non-objects', () => {
+    expect(isLive2DManifestRaw(null)).toBe(false)
+    expect(isLive2DManifestRaw('x')).toBe(false)
+  })
+})
+
+describe('parseLive2DManifest', () => {
+  it('accepts a valid manifest', () => {
+    const m = parseLive2DManifest(validLive2D)
+    expect(m.render.model).toBe('model/character.model3.json')
+    expect(m.render.stateMap.greet.description).toBe('被点击时的问候动作')
+  })
+  it('accepts an empty stateMap (author need not fill every state)', () => {
+    const m = parseLive2DManifest({ ...validLive2D, render: { ...validLive2D.render, stateMap: {} } })
+    expect(m.render.stateMap).toEqual({})
+  })
+  it('rejects schemaVersion other than 2', () => {
+    expect(() => parseLive2DManifest({ ...validLive2D, schemaVersion: 1 })).toThrow(/schemaVersion/)
+  })
+  it('rejects render.type other than live2d', () => {
+    const bad = { ...validLive2D, render: { ...validLive2D.render, type: 'sprite' } }
+    expect(() => parseLive2DManifest(bad)).toThrow(/render\.type/)
+  })
+  it('rejects missing render.model', () => {
+    const { model, ...rest } = validLive2D.render
+    expect(() => parseLive2DManifest({ ...validLive2D, render: rest })).toThrow(/model/)
+  })
+  it('rejects non-numeric viewport fields', () => {
+    const bad = { ...validLive2D, render: { ...validLive2D.render, viewport: { width: '360', height: 480, resolutionCap: 1.5 } } }
+    expect(() => parseLive2DManifest(bad)).toThrow(/viewport/)
+  })
+  it('rejects non-boolean interaction fields', () => {
+    const bad = { ...validLive2D, render: { ...validLive2D.render, interaction: { mirrorOnWalk: 'yes', mouseTracking: true, lipSyncParameter: 'x' } } }
+    expect(() => parseLive2DManifest(bad)).toThrow(/interaction/)
+  })
+  it('rejects a stateMap entry with wrong field type', () => {
+    const bad = { ...validLive2D, render: { ...validLive2D.render, stateMap: { idle: { loop: 'yes' } } } }
+    expect(() => parseLive2DManifest(bad)).toThrow(/stateMap\.idle\.loop/)
+  })
+  it('accepts optional thumbnail string', () => {
+    const m = parseLive2DManifest({ ...validLive2D, thumbnail: 'thumbnail.png' })
+    expect(m.thumbnail).toBe('thumbnail.png')
+  })
+})

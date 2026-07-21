@@ -1,0 +1,86 @@
+import { protocol, net } from 'electron'
+import { randomBytes } from 'node:crypto'
+import { existsSync, lstatSync } from 'node:fs'
+import { extname, resolve, sep } from 'node:path'
+import { pathToFileURL } from 'node:url'
+
+export const KIBO_PET_SCHEME = 'kibo-pet'
+
+/** 喂给 Electron `protocol.registerSchemesAsPrivileged`;必须在 app.ready 之前调用
+ *  (Phase 4 接线时的职责,本文件不调用)。不开 bypassCSP/Service Worker/扩展权限。 */
+export const KIBO_PET_SCHEME_PRIVILEGES = {
+  scheme: KIBO_PET_SCHEME,
+  privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: false, bypassCSP: false }
+}
+
+const ALLOWED_EXTENSIONS: Record<string, string> = {
+  '.json': 'application/json',
+  '.moc3': 'application/octet-stream',
+  '.png': 'image/png',
+  '.wav': 'audio/wav',
+  '.mp3': 'audio/mpeg'
+}
+
+export type ProtocolResolveResult = { filePath: string; mimeType: string } | { error: 403 | 404 }
+
+export function createKiboPetProtocolRegistry(): {
+  registerToken(rootDir: string): string
+  revokeToken(token: string): void
+  resolveRequest(url: string): ProtocolResolveResult
+} {
+  const tokens = new Map<string, string>() // token -> resolved root dir
+
+  return {
+    registerToken(rootDir) {
+      const token = randomBytes(16).toString('hex')
+      tokens.set(token, resolve(rootDir))
+      return token
+    },
+    revokeToken(token) {
+      tokens.delete(token)
+    },
+    resolveRequest(url) {
+      // Manual URL parsing to avoid pathname normalization by the URL class
+      // (URL class normalizes /../ away, breaking traversal detection)
+      const match = url.match(/^([a-z][a-z0-9+.-]*):\/\/([^/?#]+)(.*?)(?:\?|#|$)/i)
+      if (!match) return { error: 404 }
+      const scheme = match[1]
+      const authority = match[2]
+      const pathAndQuery = match[3]
+
+      if (scheme !== KIBO_PET_SCHEME) return { error: 404 }
+      const root = tokens.get(authority)
+      if (!root) return { error: 404 }
+
+      const relPath = decodeURIComponent(pathAndQuery).replace(/^\/+/, '')
+      const ext = extname(relPath).toLowerCase()
+      const mimeType = ALLOWED_EXTENSIONS[ext]
+      if (!mimeType) return { error: 403 }
+
+      const resolved = resolve(root, relPath)
+      if (resolved !== root && !resolved.startsWith(root + sep)) return { error: 403 }
+      if (!existsSync(resolved)) return { error: 404 }
+      try {
+        if (lstatSync(resolved).isSymbolicLink()) return { error: 403 }
+      } catch {
+        return { error: 404 }
+      }
+      return { filePath: resolved, mimeType }
+    }
+  }
+}
+
+/**
+ * Electron `protocol.handle` 胶水层。**Phase 2 不调用这个函数**——它没有消费方,写在这里
+ * 是给 Phase 4 现成用的基础设施。真正接线(含 app.ready 前的 registerSchemesAsPrivileged)
+ * 留给 Phase 4。
+ */
+export function installKiboPetProtocolHandler(
+  registry: ReturnType<typeof createKiboPetProtocolRegistry>
+): void {
+  protocol.handle(KIBO_PET_SCHEME, async (request) => {
+    const result = registry.resolveRequest(request.url)
+    if ('error' in result) return new Response(null, { status: result.error })
+    return net.fetch(pathToFileURL(result.filePath).toString())
+  })
+}

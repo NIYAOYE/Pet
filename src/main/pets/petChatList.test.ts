@@ -16,8 +16,8 @@ describe('previewOf', () => {
 
 describe('buildPetChatList', () => {
   const pets: PetSummary[] = [
-    { id: 'a', displayName: 'Alpha', description: '' },
-    { id: 'b', displayName: 'Bravo', description: '' }
+    { id: 'a', displayName: 'Alpha', description: '', renderType: 'sprite', renderReady: true },
+    { id: 'b', displayName: 'Bravo', description: '', renderType: 'sprite', renderReady: true }
   ]
   it('活跃宠物用 activeMessages 末条,非活跃用 peekLast,active 标记正确', () => {
     const activeMessages: ChatMessage[] = [
@@ -29,8 +29,8 @@ describe('buildPetChatList', () => {
     const avatarOf = (id: string): string => (id === 'a' ? 'data:img-a' : '')
     const out = buildPetChatList({ pets, activeId: 'a', activeMessages, peekLast, avatarOf })
     expect(out).toEqual([
-      { id: 'a', displayName: 'Alpha', avatarDataUrl: 'data:img-a', lastMessage: '在的', lastMessageTime: 200, active: true },
-      { id: 'b', displayName: 'Bravo', avatarDataUrl: '', lastMessage: '好久不见', lastMessageTime: 50, active: false }
+      { id: 'a', displayName: 'Alpha', avatarDataUrl: 'data:img-a', lastMessage: '在的', lastMessageTime: 200, active: true, renderReady: true },
+      { id: 'b', displayName: 'Bravo', avatarDataUrl: '', lastMessage: '好久不见', lastMessageTime: 50, active: false, renderReady: true }
     ])
   })
   it('无历史的宠物 lastMessage/lastMessageTime 为 undefined', () => {
@@ -38,5 +38,10 @@ describe('buildPetChatList', () => {
     expect(out[0].lastMessage).toBeUndefined()
     expect(out[0].lastMessageTime).toBeUndefined()
     expect(out[1].active).toBe(false)
+  })
+  it('renderReady 透传到 PetChatListItem', () => {
+    const pets: PetSummary[] = [{ id: 'a', displayName: 'A', description: '', renderType: 'live2d', renderReady: false }]
+    const out = buildPetChatList({ pets, activeId: 'nope', activeMessages: [], peekLast: () => undefined, avatarOf: () => '' })
+    expect(out[0].renderReady).toBe(false)
   })
 })

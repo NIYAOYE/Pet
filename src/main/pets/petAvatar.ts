@@ -1,7 +1,7 @@
 import { nativeImage } from 'electron'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { frameRect, parsePetManifest } from '@shared/petPackage'
+import { frameRect, parsePetManifest, isLive2DManifestRaw, parseLive2DManifest } from '@shared/petPackage'
 
 const AVATAR_PX = 48
 
@@ -11,15 +11,31 @@ export function resolvePetDir(petId: string, dirs: { bundledPetsDir: string; use
   return existsSync(join(userDir, 'pet.json')) ? userDir : join(dirs.bundledPetsDir, petId)
 }
 
-/** 从宠物 spritesheet 裁 idle 首帧成小圆头像的 data URL;按 spritesheet mtime 缓存。
- *  webp 解码失败(某些平台 nativeImage 不支持)或缺 idle 动画 → 返回 ''(渲染层退回色块占位)。 */
+/** 从宠物包裁小圆头像的 data URL,按源文件 mtime 缓存。
+ *  sprite 包:裁 spritesheet 的 idle 首帧。
+ *  live2d 包:读 manifest.thumbnail 静态图(若提供);无该字段则没有头像可裁。
+ *  webp/图片解码失败、缺 idle 动画、缺 thumbnail 字段 → 返回 ''(渲染层退回色块占位)。 */
 export function createPetAvatarCache(): { avatarOf: (petDir: string, petId: string) => string } {
   const cache = new Map<string, { mtimeMs: number; url: string }>()
   return {
     avatarOf(petDir, petId) {
       try {
         const manifestPath = join(petDir, 'pet.json')
-        const manifest = parsePetManifest(JSON.parse(readFileSync(manifestPath, 'utf-8')))
+        const raw = JSON.parse(readFileSync(manifestPath, 'utf-8'))
+        if (isLive2DManifestRaw(raw)) {
+          const manifest = parseLive2DManifest(raw)
+          if (!manifest.thumbnail) return ''
+          const thumbPath = join(petDir, manifest.thumbnail)
+          const mtimeMs = statSync(thumbPath).mtimeMs
+          const hit = cache.get(petId)
+          if (hit && hit.mtimeMs === mtimeMs) return hit.url
+          const img = nativeImage.createFromPath(thumbPath)
+          if (img.isEmpty()) { cache.set(petId, { mtimeMs, url: '' }); return '' }
+          const url = img.resize({ width: AVATAR_PX, height: AVATAR_PX, quality: 'good' }).toDataURL()
+          cache.set(petId, { mtimeMs, url })
+          return url
+        }
+        const manifest = parsePetManifest(raw)
         const idle = manifest.animations.idle
         if (!idle) return ''
         const sheetPath = join(petDir, manifest.spritesheetPath)

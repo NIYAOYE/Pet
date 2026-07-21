@@ -52,7 +52,7 @@ import { createOpenAiCompatEmbedder, resolveEmbeddingKey, type Embedder } from '
 import { createTodoStore } from '../todos/todoStore'
 import { createScheduler } from '../todos/scheduler'
 import { resolvePetHome } from '../pets/resolvePetHome'
-import { listPets, importPetFolder } from '../pets/petCatalog'
+import { listPets, importPetFolder, cleanupStaleStaging } from '../pets/petCatalog'
 import { buildPetChatList } from '../pets/petChatList'
 import { createPetAvatarCache, resolvePetDir } from '../pets/petAvatar'
 import { loadTranscript } from '../memory/transcriptStore'
@@ -177,6 +177,7 @@ export function startShell(): void {
   const userData = app.getPath('userData')
   const settingsFile = join(userData, 'settings.json')
   const petCatalogDirs = { bundledPetsDir: petsDir(appRoot), userPetsDir: join(userData, 'pets') }
+  cleanupStaleStaging(petCatalogDirs.userPetsDir)
   // MVP-05 的旧全局 userData/memory 是在默认宠物 luluka 下攒的,只在"激活的就是默认宠物"时
   // 一次性迁入,避免把 luluka 的记忆错误搬进另一只宠物的文件夹(spec §3.3:仅对默认宠物迁移)。
   const legacyMemoryDir = join(userData, 'memory')
@@ -488,8 +489,13 @@ export function startShell(): void {
 
   async function switchPet(petId: string): Promise<boolean> {
     if (petId === session.petId) return false
-    if (!listPets(petCatalogDirs).some((p) => p.id === petId)) {
+    const target = listPets(petCatalogDirs).find((p) => p.id === petId)
+    if (!target) {
       dialog.window()?.webContents.send(IPC.CHAT_ERROR, '找不到这只宠物')
+      return false
+    }
+    if (!target.renderReady) {
+      dialog.window()?.webContents.send(IPC.CHAT_ERROR, '这只宠物的渲染引擎还没就绪,暂时无法切换')
       return false
     }
     // 先建后弃:新会话构建成功才 dispose 旧的,失败则旧会话原封不动

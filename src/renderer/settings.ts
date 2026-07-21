@@ -24,6 +24,7 @@ const desktopControlEnabled = $<HTMLInputElement>('desktopControlEnabled')
 const gpuAccelerationExperimental = $<HTMLInputElement>('gpuAccelerationExperimental')
 const petSelect = $<HTMLSelectElement>('petSelect')
 const importPetBtn = $<HTMLButtonElement>('importPet')
+const importDetail = $<HTMLElement>('importDetail')
 const relaunchBtn = $<HTMLButtonElement>('relaunch')
 const noPetBanner = $<HTMLElement>('noPetBanner')
 const closeBtn = $<HTMLButtonElement>('closeBtn')
@@ -333,15 +334,23 @@ async function refreshPets(selectId: string): Promise<void> {
   for (const p of pets) {
     const opt = document.createElement('option')
     opt.value = p.id
-    opt.textContent = p.displayName
+    opt.textContent = p.renderReady ? p.displayName : `${p.displayName}(渲染引擎未就绪)`
+    if (!p.renderReady) opt.disabled = true
     petSelect.appendChild(opt)
   }
-  // 选中项:优先目标 id;若不在列表(如坏包)则回落列表首项
+  // 选中项:优先目标 id;若不可选(不在列表/坏包/渲染未就绪)则回落第一个可选宠物。
+  // 注意:disabled 的 <option> 仍然可以被 JS 赋值选中(HTML 规范只挡用户交互式选择),
+  // 所以"目标 id 在列表里但 renderReady:false"这个情况必须单独判断,不能只看
+  // petSelect.value !== selectId 这一条(赋值本身会"成功",走不到这个分支)。
+  const selectable = pets.filter((p) => p.renderReady)
   petSelect.value = selectId
-  if (petSelect.value !== selectId && pets.length > 0) petSelect.value = pets[0].id
+  const target = pets.find((p) => p.id === selectId)
+  if ((!target || !target.renderReady) && selectable.length > 0) petSelect.value = selectable[0].id
 }
 
 importPetBtn.addEventListener('click', async () => {
+  importDetail.style.display = 'none'
+  importDetail.innerHTML = ''
   try {
     const res = await window.settingsApi.importPet()
     if (!res) return // 用户取消,静默
@@ -349,6 +358,14 @@ importPetBtn.addEventListener('click', async () => {
       await refreshPets(res.pet.id)
       noPetBanner.style.display = 'none'
       status.textContent = `✓ 已导入:${res.pet.displayName}(选它并保存后重启生效)`
+      if (res.warnings && res.warnings.length > 0) {
+        importDetail.style.display = 'block'
+        for (const w of res.warnings) {
+          const line = document.createElement('div')
+          line.textContent = `· ${w}`
+          importDetail.appendChild(line)
+        }
+      }
     } else {
       status.textContent = `✗ ${res.message}`
     }

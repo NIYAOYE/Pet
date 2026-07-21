@@ -535,10 +535,11 @@ describe('scanImportSource', () => {
     writeFileSync(join(dir, 'huge.json'), Buffer.alloc(10 * 1024 * 1024 + 1))
     expect(scanImportSource(dir)?.reason).toBe('json-too-large')
   })
-  it('rejects when total directory size exceeds 1 GiB', () => {
+  it('小文件目录不会被误判为超过 1GiB 总量硬限制(边界健全性检查)', () => {
+    // 真正写 1GiB+ 数据会让这个用例变得很慢且浪费磁盘;目录总量累加逻辑与已经过
+    // 测试的 json-too-large/too-many-files 判断走同一段数值比较代码路径,这里只
+    // 确认小文件不会被误判命中该分支,不覆盖真正跨越 1GiB 边界那条路径本身。
     const dir = scratch()
-    // 不真的写 1GB 文件——用 statSync mock 不现实,改为断言纯逻辑边界的单元测试在 evaluate 层;
-    // 这里只验证一个明显小文件不会被误判超限
     writeFileSync(join(dir, 'small.bin'), Buffer.alloc(1024))
     expect(scanImportSource(dir)).toBeNull()
   })
@@ -546,6 +547,12 @@ describe('scanImportSource', () => {
     const dir = scratch()
     const sub = join(dir, 'many'); mkdirSync(sub)
     for (let i = 0; i < 5001; i++) writeFileSync(join(sub, `f${i}.txt`), '')
+    expect(scanImportSource(dir)?.reason).toBe('too-many-files')
+  }, 20000)
+
+  it('directory entries alone (no files) also count toward the 5000 limit — a source made entirely of empty subdirectories cannot bypass the cap', () => {
+    const dir = scratch()
+    for (let i = 0; i < 5001; i++) mkdirSync(join(dir, `d${i}`))
     expect(scanImportSource(dir)?.reason).toBe('too-many-files')
   }, 20000)
 })
@@ -599,14 +606,17 @@ export function scanImportSource(srcDir: string): SecurityViolation | null {
       if (lst.isSymbolicLink()) {
         return { reason: 'symlink-rejected', message: `拒绝符号链接/reparse point:${full}` }
       }
+      // 目录本身也计入文件数硬限制,且在递归前检查——否则大量空子目录(或极深嵌套链)
+      // 完全绕过 5000 上限,还可能在极深嵌套时触发未捕获的 RangeError(调用栈溢出)
+      // 而不是这个模块承诺的"返回 SecurityViolation"契约。
+      fileCount++
+      if (fileCount > MAX_FILE_COUNT) {
+        return { reason: 'too-many-files', message: `文件数量超过硬限制 ${MAX_FILE_COUNT}` }
+      }
       if (lst.isDirectory()) {
         const sub = walk(full)
         if (sub) return sub
         continue
-      }
-      fileCount++
-      if (fileCount > MAX_FILE_COUNT) {
-        return { reason: 'too-many-files', message: `文件数量超过硬限制 ${MAX_FILE_COUNT}` }
       }
       const ext = extname(name).toLowerCase()
       if (FORBIDDEN_EXTENSIONS.has(ext)) {
@@ -915,6 +925,7 @@ Expected: FAIL — module doesn't exist.
 
 ```ts
 // src/main/pets/kiboPetProtocol.ts
+import { protocol, net } from 'electron'
 import { randomBytes } from 'node:crypto'
 import { existsSync, lstatSync } from 'node:fs'
 import { extname, resolve, sep } from 'node:path'
@@ -988,8 +999,6 @@ export function createKiboPetProtocolRegistry(): {
 export function installKiboPetProtocolHandler(
   registry: ReturnType<typeof createKiboPetProtocolRegistry>
 ): void {
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const { protocol, net } = require('electron') as typeof import('electron')
   protocol.handle(KIBO_PET_SCHEME, async (request) => {
     const result = registry.resolveRequest(request.url)
     if ('error' in result) return new Response(null, { status: result.error })
@@ -1216,7 +1225,7 @@ git commit -m "feat(pets): 宠物目录扫描识别 render 判别式,新增 .sta
 - Modify: `src/main/pets/petCatalog.test.ts`
 
 **Interfaces:**
-- Consumes: `scanImportSource` (Task 4), `readTextureInfos`/`evaluateTextureBudget` (Task 3), `listModelFilesRecursive`/`scanAndPatchOrphanResources`/`detectPossibleWatermarkProtection` (Task 5), `parseLive2DManifest`/`isLive2DManifestRaw` (Task 1)
+- Consumes: `scanImportSource`/`isPathSafe` (Task 4), `readTextureInfos`/`evaluateTextureBudget` (Task 3), `listModelFilesRecursive`/`scanAndPatchOrphanResources`/`detectPossibleWatermarkProtection` (Task 5), `parseLive2DManifest`/`isLive2DManifestRaw` (Task 1)
 - Produces: `ImportReason` gains new variants; `ImportResult`'s `ok:true` branch gains optional `warnings?: string[]`; `importPetFolder` keeps its exact existing signature `(srcDir: string, dirs: {bundledPetsDir,userPetsDir}) => ImportResult` but is internally rewritten
 
 - [ ] **Step 1: Write the failing tests**
@@ -1309,6 +1318,17 @@ describe('importPetFolder — 统一 staging 流程', () => {
     if (!r.ok) expect(r.reason).toBe('missing-model-refs')
   })
 
+  it('live2d 包:model3.json 引用路径穿越出 modelDir → path-traversal,不提交', () => {
+    const src = scratch(); const user = scratch()
+    const petSrc = makeLive2DPet(src, 'traversal', '穿越')
+    const modelJson = { FileReferences: { Textures: ['../../../../evil.png'] } }
+    writeFileSync(join(petSrc, 'model', 'character.model3.json'), JSON.stringify(modelJson))
+    const r = importPetFolder(petSrc, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(r.ok).toBe(false)
+    if (!r.ok) expect(r.reason).toBe('path-traversal')
+    expect(existsSync(join(user, '.staging'))).toBe(false)
+  })
+
   it('禁止的文件类型(.exe)出现在源目录 → forbidden-file-type,sprite/live2d 都适用', () => {
     const src = scratch(); const user = scratch()
     const petSrc = makePet(src, 'withexe', '带exe')
@@ -1357,7 +1377,7 @@ In `src/main/pets/petCatalog.ts`, replace `importPetFolder` entirely:
 ```ts
 import { randomBytes } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { scanImportSource } from './importSecurity'
+import { scanImportSource, isPathSafe } from './importSecurity'
 import { readTextureInfos, evaluateTextureBudget } from './live2dTextureBudget'
 import { listModelFilesRecursive, scanAndPatchOrphanResources, detectPossibleWatermarkProtection, type Model3Json } from './live2dOrphanResources'
 
@@ -1403,6 +1423,9 @@ function importLive2DPet(raw: unknown, srcDir: string, stagingDir: string, dirs:
   if (existsSync(join(dirs.bundledPetsDir, manifest.id)) || existsSync(join(dirs.userPetsDir, manifest.id))) {
     return { ok: false, reason: 'id-exists', message: `id「${manifest.id}」已存在,请修改宠物包 pet.json 的 id 后重试` }
   }
+  if (!isPathSafe(srcDir, manifest.render.model)) {
+    return { ok: false, reason: 'path-traversal', message: `render.model 路径不安全:${manifest.render.model}` }
+  }
   const modelJsonSrcPath = join(srcDir, manifest.render.model)
   if (!existsSync(modelJsonSrcPath)) {
     return { ok: false, reason: 'missing-model-refs', message: `找不到 render.model 指向的文件:${manifest.render.model}` }
@@ -1415,6 +1438,9 @@ function importLive2DPet(raw: unknown, srcDir: string, stagingDir: string, dirs:
   }
   const modelDir = dirname(modelJsonSrcPath)
 
+  // model3.json 的 FileReferences 是用户导入包里自带的、未经信任的数据——在拼路径读盘前
+  // 必须过一遍 isPathSafe,否则一个精心构造的 "../../../../some/system/file" 就能让
+  // 下面的 existsSync/readTextureInfos 读到 modelDir 之外的任意本机文件(路径穿越/信息泄露)。
   const refFiles = [
     model3Json.FileReferences.Moc,
     model3Json.FileReferences.Physics,
@@ -1423,6 +1449,9 @@ function importLive2DPet(raw: unknown, srcDir: string, stagingDir: string, dirs:
     ...(model3Json.FileReferences.Textures ?? [])
   ].filter((f): f is string => typeof f === 'string')
   for (const f of refFiles) {
+    if (!isPathSafe(modelDir, f)) {
+      return { ok: false, reason: 'path-traversal', message: `model3.json 引用的路径不安全:${f}` }
+    }
     if (!existsSync(join(modelDir, f))) {
       return { ok: false, reason: 'missing-model-refs', message: `model3.json 引用的文件缺失:${f}` }
     }
@@ -1444,8 +1473,13 @@ function importLive2DPet(raw: unknown, srcDir: string, stagingDir: string, dirs:
   if (detectPossibleWatermarkProtection(patchedModel3Json)) {
     warnings.push('该模型未声明任何动作/表情,可能需要额外处理才能正常显示角色')
   }
-  if (manifest.thumbnail && !existsSync(join(srcDir, manifest.thumbnail))) {
-    return { ok: false, reason: 'missing-model-refs', message: `找不到 thumbnail 指向的文件:${manifest.thumbnail}` }
+  if (manifest.thumbnail) {
+    if (!isPathSafe(srcDir, manifest.thumbnail)) {
+      return { ok: false, reason: 'path-traversal', message: `thumbnail 路径不安全:${manifest.thumbnail}` }
+    }
+    if (!existsSync(join(srcDir, manifest.thumbnail))) {
+      return { ok: false, reason: 'missing-model-refs', message: `找不到 thumbnail 指向的文件:${manifest.thumbnail}` }
+    }
   }
 
   cpSync(srcDir, stagingDir, { recursive: true })

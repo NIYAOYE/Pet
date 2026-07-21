@@ -171,10 +171,19 @@ export interface ChatApi {
 export interface SettingsSnapshot { settings: AppSettings; hasKey: boolean; hasSearchKey: boolean; hasEmbeddingKey: boolean; hasFirecrawlKey: boolean; noPetInstalled: boolean; activePetVoice: PetVoice | undefined }
 export interface TestResult { ok: boolean; error?: string }
 
-export interface PetSummary { id: string; displayName: string; description: string }
-export type ImportReason = 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists' | 'copy-failed'
+export interface PetSummary {
+  id: string; displayName: string; description: string
+  renderType: 'sprite' | 'live2d'
+  /** sprite 恒 true;live2d 在 Phase 2 恒 false——渲染引擎(Phase 3/4)还不存在。 */
+  renderReady: boolean
+}
+export type ImportReason =
+  | 'no-manifest' | 'invalid-manifest' | 'missing-spritesheet' | 'bad-id' | 'id-exists' | 'copy-failed'
+  | 'path-traversal' | 'symlink-rejected' | 'forbidden-file-type'
+  | 'dir-too-large' | 'too-many-files' | 'json-too-large'
+  | 'texture-too-large' | 'too-many-textures' | 'missing-model-refs'
 export type ImportResult =
-  | { ok: true; pet: PetSummary }
+  | { ok: true; pet: PetSummary; warnings?: string[] }
   | { ok: false; reason: ImportReason; message: string }
 
 export interface PetChatListItem {
@@ -184,6 +193,8 @@ export interface PetChatListItem {
   lastMessage?: string
   lastMessageTime?: number
   active: boolean
+  /** false → 该宠物渲染引擎未就绪(live2d 包在 Phase 2 恒为 false),UI 应禁用点击。 */
+  renderReady: boolean
 }
 export interface PetSwitchedPayload { petId: string; displayName: string }
 
