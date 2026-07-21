@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; script-src 'self'" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data: kibo-pet:; script-src 'self'; connect-src 'self' kibo-pet:; media-src 'self' kibo-pet:" />
     <style>
       html, body { margin: 0; height: 100%; background: transparent; overflow: hidden; }
       #pet { -webkit-app-region: no-drag; cursor: grab; display: block; }
@@ -10,6 +10,7 @@
   </head>
   <body>
     <canvas id="pet"></canvas>
+    <script src="./live2dcubismcore.js"></script>
     <script type="module" src="./main.ts"></script>
   </body>
 </html>

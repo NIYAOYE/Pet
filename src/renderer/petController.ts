@@ -1,4 +1,5 @@
-import type { PetRenderer } from './petRenderer'
+import type { PetRenderer, PetHitResult } from './petRenderer'
+import type { PetRenderSource } from '@shared/petPackage'
 import { initBrain, step, type PetBrainCtx, type PetEvent, type Bounds } from '@shared/petBrain'
 import { initReaction, stepReaction, type ReactionCtx, type ReactionTrigger } from '@shared/reactionPlanner'
 import type { ContextSignalKind } from '@shared/ipc'
@@ -19,8 +20,17 @@ export class PetController {
   private reactionCtx: ReactionCtx = initReaction()
   private pendingReaction: ReactionTrigger | null = null
   private pendingContextSignal: ContextSignalKind | null = null
+  private renderer: PetRenderer
+  private rendererType: PetRenderSource['type']
 
-  constructor(private renderer: PetRenderer) {}
+  constructor(
+    initialRenderer: PetRenderer,
+    initialSourceType: PetRenderSource['type'],
+    private readonly createRenderer: (source: PetRenderSource) => PetRenderer
+  ) {
+    this.renderer = initialRenderer
+    this.rendererType = initialSourceType
+  }
 
   async start(): Promise<void> {
     try {
@@ -36,12 +46,26 @@ export class PetController {
     if (this.timer !== null) { clearInterval(this.timer); this.timer = null }
   }
 
-  /** 热切换宠物:重新拉取宠物数据,交给渲染器重新加载,大脑复位到 idle。 */
+  /** 热切换宠物:重新拉取宠物数据。若新宠物的渲染器类型(sprite/live2d)和当前不一样,
+   *  先销毁旧渲染器实例、用工厂按新类型构造一个新实例再替换——不能对着一个类型不匹配的
+   *  渲染器直接调 load(),SpriteRenderer/Live2DPetRenderer 的 load() 都会因为类型断言失败
+   *  而抛错。类型相同时行为不变,直接复用现有实例。 */
   async reload(): Promise<void> {
     const source = await window.petApi.getPet()
+    if (source.type !== this.rendererType) {
+      await this.renderer.destroy()
+      this.renderer = this.createRenderer(source)
+      this.rendererType = source.type
+    }
     await this.renderer.load(source)
     this.ctx = initBrain()
     this.currentAnim = ''
+  }
+
+  /** 供 main.ts 的鼠标事件处理器查询当前渲染器的命中结果——不能让 main.ts 自己持有一份
+   *  渲染器引用,否则 reload() 换实例后 main.ts 手里的引用会变成一个已销毁的旧实例。 */
+  hitTest(clientX: number, clientY: number): PetHitResult {
+    return this.renderer.hitTest(clientX, clientY)
   }
 
   send(event: PetEvent): void { this.pending.push(event) }

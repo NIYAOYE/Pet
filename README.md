@@ -59,6 +59,16 @@ pnpm test                        # 单元测试（Vitest）
 pnpm dist                        # 打包 Windows 安装包 → dist/Kibo Setup <版本>.exe
 ```
 
+### Live2D Cubism Core 运行时
+
+`vendor/live2d-core/` 和 `src/renderer/public/live2dcubismcore.js` 未随仓库分发(Live2D 官方 SDK 许可证不允许随意再分发,已被 gitignore)。首次开发 live2d 渲染相关功能前,运行一次：
+
+```bash
+pnpm live2d:setup
+```
+
+该命令会从 Live2D 官网下载 Cubism SDK for Web 并解压出运行时脚本。
+
 <details>
 <summary>打包构建说明（Windows 坑）</summary>
 

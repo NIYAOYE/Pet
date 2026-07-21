@@ -84,6 +84,10 @@ function makeDeps(): PetSessionDeps {
       postSse: realPostSse,
       onAudioChunk: () => {},
       onAudioError: () => {}
+    },
+    kiboPetRegistry: {
+      registerToken: () => 'fake-token',
+      revokeToken: () => {}
     }
   }
 }
@@ -124,5 +128,21 @@ describe('createPetSession().dispose()', () => {
     await expect(session.dispose()).resolves.toBeUndefined()
     expect(cancelSpy).toHaveBeenCalledTimes(2)
     expect(stopSpy).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('createPetSession() 的 kibo-pet:// token 生命周期', () => {
+  it('构造时铸造 token,dispose() 时撤销', async () => {
+    const registerToken = vi.fn(() => 'minted-token-123')
+    const revokeToken = vi.fn()
+    const deps = { ...makeDeps(), kiboPetRegistry: { registerToken, revokeToken } }
+    const session = createPetSession('fake-pet-id', deps)
+
+    expect(registerToken).toHaveBeenCalledTimes(1)
+    expect(registerToken).toHaveBeenCalledWith('/fake/pet')
+    expect(session.resourceToken).toBe('minted-token-123')
+
+    await session.dispose()
+    expect(revokeToken).toHaveBeenCalledWith('minted-token-123')
   })
 })

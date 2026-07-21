@@ -156,4 +156,4 @@ export function parseLive2DManifest(raw: unknown): Live2DManifest {
 
 export type PetRenderSource =
   | { type: 'sprite'; manifest: PetManifest; spritesheetDataUrl: string }
-  | { type: 'live2d'; manifest: Live2DManifest }
+  | { type: 'live2d'; manifest: Live2DManifest; resourceBaseUrl: string }

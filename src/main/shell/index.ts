@@ -33,8 +33,9 @@ import {
   type PetChatListItem
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
-import type { PetVoice } from '@shared/petPackage'
+import type { PetVoice, PetRenderSource } from '@shared/petPackage'
 import { loadPet, petsDir } from '../petLoader'
+import { createKiboPetProtocolRegistry, installKiboPetProtocolHandler } from '../pets/kiboPetProtocol'
 import { createPetWindow, PET_WINDOW_SIZE } from './petWindow'
 import { createTray } from './tray'
 import { startIdleWatcher } from '../context/idleWatcher'
@@ -165,6 +166,8 @@ export function resolveVoiceBackend(petVoice: PetVoice, selected: TtsBackend): V
 }
 
 export function startShell(): void {
+  const kiboPetRegistry = createKiboPetProtocolRegistry()
+  installKiboPetProtocolHandler(kiboPetRegistry)
   const dirname = fileURLToPath(new URL('.', import.meta.url)) // resolves to out/main/ at runtime (electron-vite bundles shell into out/main/index.js)
   const appRoot = app.isPackaged ? process.resourcesPath : join(dirname, '../..')
   const preload = join(dirname, '../preload/index.js')
@@ -465,7 +468,8 @@ export function startShell(): void {
       postSse: realPostSse,
       onAudioChunk: (c) => petWin.webContents.send(IPC.VOICE_AUDIO_CHUNK, c),
       onAudioError: (m) => petWin.webContents.send(IPC.VOICE_AUDIO_ERROR, m)
-    }
+    },
+    kiboPetRegistry
   }
 
   let session = createPetSession(effectivePetId, sessionDeps)
@@ -620,7 +624,13 @@ export function startShell(): void {
     walkPreciseY = null
   })
 
-  ipcMain.handle(IPC.GET_PET, async () => loadPet(session.petDir))
+  ipcMain.handle(IPC.GET_PET, async (): Promise<PetRenderSource> => {
+    const source = await loadPet(session.petDir)
+    if (source.type === 'live2d') {
+      return { ...source, resourceBaseUrl: `kibo-pet://${session.resourceToken}/` }
+    }
+    return source
+  })
   ipcMain.handle(IPC.GET_WINDOW_BOUNDS, async (): Promise<WindowBounds> => {
     const [x, y] = petWin.getPosition()
     const [width, height] = petWin.getSize()

@@ -1,4 +1,5 @@
 import { SpriteRenderer } from './spriteRenderer'
+import { Live2DPetRenderer } from './live2dRenderer'
 import { PetController } from './petController'
 import { createPcmPlayer } from './voice/pcmPlayer'
 import type { PetRenderer } from './petRenderer'
@@ -9,10 +10,7 @@ const DBLCLICK_MS = 280
 
 function createRenderer(canvas: HTMLCanvasElement, source: PetRenderSource): PetRenderer {
   if (source.type === 'sprite') return new SpriteRenderer(canvas)
-  // 理论上不可达:主进程的启动守卫(resolveEffectivePetHome)和 switchPet() 的 renderReady
-  // 检查都会拦住 live2d 包,Phase 4 之前不会有真实渲染器可用。这里防御性地抛出,由下面
-  // boot().catch(showBootError) 现有的错误横幅机制兜住,而不是让类型系统悄悄放过一个死代码路径。
-  throw new Error('live2d 渲染器尚未实现(Phase 4)')
+  return new Live2DPetRenderer(canvas)
 }
 
 async function boot(): Promise<void> {
@@ -21,7 +19,7 @@ async function boot(): Promise<void> {
 
   const renderer = createRenderer(canvas, source)
   await renderer.load(source)
-  const controller = new PetController(renderer)
+  const controller = new PetController(renderer, source.type, (s) => createRenderer(canvas, s))
   await controller.start()
   const pcmPlayer = createPcmPlayer()
   window.petApi.onPetEvent((event) => {
@@ -76,7 +74,7 @@ async function boot(): Promise<void> {
       }
       return
     }
-    setIgnore(!renderer.hitTest(e.clientX, e.clientY).hit)
+    setIgnore(!controller.hitTest(e.clientX, e.clientY).hit)
   })
 
   window.addEventListener('mouseup', () => {

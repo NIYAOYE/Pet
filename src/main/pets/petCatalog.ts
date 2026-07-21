@@ -26,7 +26,7 @@ function readSummary(petDir: string): PetSummary | null {
     const raw = JSON.parse(readFileSync(join(petDir, 'pet.json'), 'utf-8'))
     if (isLive2DManifestRaw(raw)) {
       const manifest = parseLive2DManifest(raw)
-      return { id: manifest.id, displayName: manifest.displayName, description: manifest.description, renderType: 'live2d', renderReady: false }
+      return { id: manifest.id, displayName: manifest.displayName, description: manifest.description, renderType: 'live2d', renderReady: true }
     }
     const manifest = parsePetManifest(raw)
     return { id: manifest.id, displayName: manifest.displayName, description: manifest.description, renderType: 'sprite', renderReady: true }
@@ -242,7 +242,7 @@ function importLive2DPet(
 
   return {
     ok: true,
-    pet: { id: manifest.id, displayName: manifest.displayName, description: manifest.description, renderType: 'live2d', renderReady: false },
+    pet: { id: manifest.id, displayName: manifest.displayName, description: manifest.description, renderType: 'live2d', renderReady: true },
     ...(warnings.length > 0 ? { warnings } : {})
   }
 }

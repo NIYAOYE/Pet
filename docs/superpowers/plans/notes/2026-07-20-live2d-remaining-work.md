@@ -10,7 +10,7 @@
 | **Phase 1:Electron 31→43 升级 + 全回归** | **代码+自动化完成,已合并并推送 `origin/main`(`3b1f8bb`)。GPU 双模式真机回归 2026-07-20 已通过。其余真机 GUI/安装验收清单(见 §1.1/§1.2)仍待用户** |
 | **Phase 2:宠物包 v2 + 导入器 + kibo-pet:// 资源协议** | **代码+测试完成,已 squash 合并进本地 `main`(`fb091bd`,尚未推送 `origin/main`)。11 任务 subagent-driven-development 全部完成,详见 §2b** |
 | Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | **代码+测试完成,已 squash 合并进本地 `main`(`051a40b`,尚未推送 `origin/main`)。6 任务 subagent-driven-development,逐任务审查 + 最终整分支审查(opus)全部 clean,869→873 测试、typecheck、build 全绿** |
-| Phase 4:PixiJS/Live2D 最小加载 | **下一步**,本体未开始;前置真实模型加载 spike 已完成并真机验证,结论见 spec §17 |
+| Phase 4:PixiJS/Live2D 最小加载 | **代码+测试完成,真机验证待用户**(清单见 `docs/superpowers/plans/notes/2026-07-21-live2d-phase4-realmachine-checklist.md`) |
 | Phase 5:动态窗口/锚点/命中/无闪烁热切换 | 未开始 |
 | Phase 6:鼠标追踪/口型/设置预览 | 未开始 |
 | Phase 7:安全/恢复/性能/真机验收 | 未开始 |
@@ -107,3 +107,4 @@
 4. ~~Phase 2(宠物包 v2 + 导入器 + kibo-pet:// 资源协议)~~ **已完成**,详见 §2b。**本地 `main` 尚未 push 到 `origin/main`**(含 Phase 2 之前积累的 spec/plan 提交,共 3 个本地提交领先)。
 5. ~~Phase 3(PetRenderer 抽象 + 精灵兼容驱动)~~ **已完成**,详见 §2c。**本地 `main` 尚未 push 到 `origin/main`**(领先 origin 7 个提交)。
 6. 就绪后,针对 **Phase 4(PixiJS/Live2D 最小加载)** 走 brainstorming → writing-plans 流程。核心工作:实现 `Live2DPetRenderer`(实现 Phase 3 定义的 `PetRenderer` 接口)、接入 `kibo-pet://` 协议 handler(token 铸造 + `registerSchemesAsPrivileged` + `installKiboPetProtocolHandler`)、处理引擎版本兼容问题(主设计文档 §17.2/§17.5,Phase 2 设计文档前置备忘录第 7 条)。不涉及动态窗口/锚点/无闪烁热切换(那是 Phase 5)。
+7. Phase 4(PixiJS/Live2D 最小加载)代码完成,真机验证清单见上。验证通过后,针对 **Phase 5(动态窗口/锚点/命中/无闪烁热切换)** 走 brainstorming → writing-plans 流程。

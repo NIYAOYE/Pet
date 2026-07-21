@@ -51,7 +51,7 @@ describe('resolveEffectivePetHome', () => {
     if (result.mode === 'ready') expect(basenameOf(result.petHome.petHome)).toBe('luluka')
   })
 
-  it('配置的宠物是 live2d(renderReady:false)→ 回退默认 sprite 宠物,不当场启动', () => {
+  it('配置的宠物是 live2d 且 renderReady:true(Phase 4 起)→ 直接用配置的 id,不回退', () => {
     const userDataDir = scratch()
     const bundledPetsDir = scratch()
     makeLive2DPet(bundledPetsDir, 'chitose')
@@ -61,10 +61,10 @@ describe('resolveEffectivePetHome', () => {
       configuredPetId: 'chitose', defaultPetId: 'luluka', legacyMemoryDir: join(userDataDir, 'memory')
     })
     expect(result.mode).toBe('ready')
-    if (result.mode === 'ready') expect(basenameOf(result.petHome.petHome)).toBe('luluka')
+    if (result.mode === 'ready') expect(basenameOf(result.petHome.petHome)).toBe('chitose')
   })
 
-  it('配置的宠物就是默认宠物且是 live2d(不应发生的极端情况)→ 没有二次回退目标,原样放行', () => {
+  it('配置的宠物就是默认宠物且是 live2d → 正常 ready,用配置的 id', () => {
     const userDataDir = scratch()
     const bundledPetsDir = scratch()
     makeLive2DPet(bundledPetsDir, 'chitose')

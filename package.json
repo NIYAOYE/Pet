@@ -11,14 +11,17 @@
     "typecheck": "tsc --noEmit -p tsconfig.json && tsc --noEmit -p tsconfig.node.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "dist": "pnpm build && electron-builder --win"
+    "dist": "pnpm build && electron-builder --win",
+    "live2d:setup": "node scripts/fetch-live2d-core.mjs"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.8",
     "electron": "43.1.1",
     "electron-builder": "26.15.3",
     "electron-vite": "5.0.0",
+    "pixi.js": "8.19.0",
     "typescript": "^5.5.0",
+    "untitled-pixi-live2d-engine": "1.3.5",
     "vite": "6.4.3",
     "vitest": "^2.0.0"
   },

@@ -1,10 +1,13 @@
-import { app, dialog } from 'electron'
+import { app, dialog, protocol } from 'electron'
 import { writeFileSync, existsSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { startShell } from './shell'
 import { loadSettings, saveSettings } from './config/settings'
 import { decideGpuBoot } from '@shared/gpuBootDecision'
+import { KIBO_PET_SCHEME_PRIVILEGES } from './pets/kiboPetProtocol'
+
+protocol.registerSchemesAsPrivileged([KIBO_PET_SCHEME_PRIVILEGES])
 
 const GPU_MARKER_FILE_NAME = 'gpu-accel-boot.marker'
 /** 原崩溃描述是"秒退",几乎瞬间发生;这个延迟给"确认这次启动没崩"留出安全边际。 */

@@ -82,6 +82,12 @@ export interface PetSessionDeps {
   onAppFocusMatch: (lineText: string) => void
   // 语音接线所需
   voiceDeps: VoiceSessionDeps
+  /** kibo-pet:// 协议的 token 注册表(main/pets/kiboPetProtocol.ts),startShell 建一次注入。
+   *  createPetSession 用它给每个会话铸造一个资源 token,dispose() 时撤销。 */
+  kiboPetRegistry: {
+    registerToken(rootDir: string): string
+    revokeToken(token: string): void
+  }
 }
 
 /** 一个"活跃宠物"的可重建捆绑:家目录 + 记忆 + 聊天 + appFocus 监听 + 语音 sidecar。
@@ -92,6 +98,7 @@ export interface PetSession {
   petId: string
   petDir: string
   memoryDir: string
+  resourceToken: string
   memory: MemoryManager
   chat: ChatStore
   messages(): ChatMessage[]
@@ -112,6 +119,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     legacyMemoryDir: petId === deps.defaultPetId ? deps.legacyMemoryDir : undefined
   })
   const petDir = petHome
+  const resourceToken = deps.kiboPetRegistry.registerToken(petDir)
 
   const memory = createMemoryManager({ dir: memoryDir, getEmbedder: deps.getEmbedder })
 
@@ -286,6 +294,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     petId,
     petDir,
     memoryDir,
+    resourceToken,
     memory,
     chat,
     messages: () => memory.messages(),
@@ -295,6 +304,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
       try { chat.cancel() } catch (e) { console.warn('[petSession] chat.cancel', e) }
       try { appFocusWatcher.stop() } catch (e) { console.warn('[petSession] appFocus.stop', e) }
       try { await stopVoice() } catch (e) { console.warn('[petSession] stopVoice', e) }
+      try { deps.kiboPetRegistry.revokeToken(resourceToken) } catch (e) { console.warn('[petSession] revokeToken', e) }
     }
   }
 }

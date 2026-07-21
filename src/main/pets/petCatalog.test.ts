@@ -185,11 +185,11 @@ describe('listPets — render 判别式', () => {
     const out = listPets({ bundledPetsDir: bundled, userPetsDir: user })
     expect(out[0]).toMatchObject({ renderType: 'sprite', renderReady: true })
   })
-  it('live2d 包 renderType=live2d, renderReady=false', () => {
+  it('live2d 包 renderType=live2d, renderReady=true(Phase 4 起 live2d 渲染器已就绪)', () => {
     const bundled = scratch(); const user = scratch()
     makeLive2DPet(user, 'chitose', '千岁')
     const out = listPets({ bundledPetsDir: bundled, userPetsDir: user })
-    expect(out[0]).toMatchObject({ id: 'chitose', renderType: 'live2d', renderReady: false })
+    expect(out[0]).toMatchObject({ id: 'chitose', renderType: 'live2d', renderReady: true })
   })
   it('坏的 live2d 包(render.type 声明了但校验不过)照样跳过,不炸整表', () => {
     const bundled = scratch(); const user = scratch()
@@ -255,13 +255,13 @@ describe('importPetFolder — 统一 staging 流程', () => {
     expect(written.render).toEqual({ type: 'sprite' })
   })
 
-  it('live2d 包:合法输入 → 成功导入,renderType=live2d/renderReady=false', () => {
+  it('live2d 包:合法输入 → 成功导入,renderType=live2d/renderReady=true', () => {
     const src = scratch(); const user = scratch()
     const petSrc = makeLive2DPet(src, 'chitose', '千岁')
     writeFileSync(join(petSrc, 'model', 'tex_00.png'), fakePngBytes(512, 512))
     const r = importPetFolder(petSrc, { bundledPetsDir: scratch(), userPetsDir: user })
     expect(r.ok).toBe(true)
-    if (r.ok) expect(r.pet).toMatchObject({ id: 'chitose', renderType: 'live2d', renderReady: false })
+    if (r.ok) expect(r.pet).toMatchObject({ id: 'chitose', renderType: 'live2d', renderReady: true })
     expect(existsSync(join(user, 'chitose', 'model', 'character.model3.json'))).toBe(true)
   })
 
