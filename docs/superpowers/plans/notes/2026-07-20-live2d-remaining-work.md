@@ -9,8 +9,8 @@
 | Phase 0:GPU reboot-degrade | **已合并并推送 `origin/main`(`01db719`+`3c4535b`)** |
 | **Phase 1:Electron 31→43 升级 + 全回归** | **代码+自动化完成,已合并并推送 `origin/main`(`3b1f8bb`)。GPU 双模式真机回归 2026-07-20 已通过。其余真机 GUI/安装验收清单(见 §1.1/§1.2)仍待用户** |
 | **Phase 2:宠物包 v2 + 导入器 + kibo-pet:// 资源协议** | **代码+测试完成,已 squash 合并进本地 `main`(`fb091bd`,尚未推送 `origin/main`)。11 任务 subagent-driven-development 全部完成,详见 §2b** |
-| Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | **下一步**,未开始(计划未写) |
-| Phase 4:PixiJS/Live2D 最小加载 | 本体未开始;**前置真实模型加载 spike 已完成并真机验证,结论见 spec §17** |
+| Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | **代码+测试完成,已 squash 合并进本地 `main`(`051a40b`,尚未推送 `origin/main`)。6 任务 subagent-driven-development,逐任务审查 + 最终整分支审查(opus)全部 clean,869→873 测试、typecheck、build 全绿** |
+| Phase 4:PixiJS/Live2D 最小加载 | **下一步**,本体未开始;前置真实模型加载 spike 已完成并真机验证,结论见 spec §17 |
 | Phase 5:动态窗口/锚点/命中/无闪烁热切换 | 未开始 |
 | Phase 6:鼠标追踪/口型/设置预览 | 未开始 |
 | Phase 7:安全/恢复/性能/真机验收 | 未开始 |
@@ -72,6 +72,16 @@
 
 ---
 
+## 2c. Phase 3(PetRenderer 抽象 + 精灵兼容驱动)——已完成
+
+- 设计文档:`docs/superpowers/specs/2026-07-21-live2d-phase3-pet-renderer-design.md`。
+- 2026-07-21:subagent-driven-development 6 任务全部完成 + 逐任务审查 + 最终整分支审查(opus),squash 成单提交合并进本地 `main`(`051a40b`,**尚未 push 到 `origin/main`**)。869→873 测试、typecheck、build 全绿,零 Critical/Important。
+- 落地内容:`PetRenderSource` 判别式(`src/shared/petPackage.ts`,live2d 分支只带 `manifest`,不带 `baseUrl`——token 铸造和协议接线故意留给 Phase 4)、`LoadedPet` 类型删除、`PetRenderer` 接口(`src/renderer/petRenderer.ts`)、`SpritePlayer`→`SpriteRenderer` 收编实现该接口、`PetController` 只依赖接口类型、启动路径 `renderReady` 守卫(`resolveEffectivePetHome.ts`)与 `switchPet()` 口径一致、`setFacing()` 在 `SpriteRenderer` 上显式 no-op。
+- `src/main/pets/kiboPetProtocol.ts` 基础设施(`createKiboPetProtocolRegistry`/`installKiboPetProtocolHandler`/`KIBO_PET_SCHEME_PRIVILEGES`)在 Phase 2 就已写好,Phase 3 未改动、仍无消费方——`registerSchemesAsPrivileged`/`installKiboPetProtocolHandler` 接线、token 铸造仍完全留给 Phase 4。
+- `petCatalog.ts` 的 `renderReady` 目前对所有 `renderType: 'live2d'` 硬编码为 `false`(见 `petCatalog.ts:29/32/108/245`)——Phase 4 写 plan 时需要明确决定这个硬编码是否/何时翻转(见下方 Phase 4 范围决策)。
+
+---
+
 ## 3. Phase 2-8——规划阶段的已知隐患(写 plan 前必须处理)
 
 审查 2026-07-20 设计文档(`docs/superpowers/specs/2026-07-20-live2d-renderer-design.md`)时发现、尚未被任何计划覆盖的问题,写后续 plan 时需处理:
@@ -95,4 +105,5 @@
 2. ~~Phase 1 真机验收清单(含 GPU 双模式回归)~~ **已完成**。
 3. ~~Phase 4 前置真实模型加载 spike~~ **已完成**(结论见 spec §17)。收尾:删除 `scripts/live2d-spike/` 一次性诊断代码、决定 worktree `live2d-phase4-prespike` 的合并/清理方式、决定是否 push 剩余的本地 spec/plan/结论提交到 `origin/main`。
 4. ~~Phase 2(宠物包 v2 + 导入器 + kibo-pet:// 资源协议)~~ **已完成**,详见 §2b。**本地 `main` 尚未 push 到 `origin/main`**(含 Phase 2 之前积累的 spec/plan 提交,共 3 个本地提交领先)。
-5. 就绪后,针对 **Phase 3(PetRenderer 抽象 + 精灵兼容驱动)** 走 brainstorming → writing-plans 流程。核心工作:把上面 §3 隐患第 6 条(`LoadedPet`/`loadPet`/`GET_PET` IPC 拓宽成 sprite/live2d 判别式)落地,定义 `PetRenderer` 接口边界(见主设计文档 §7),现有 `SpritePlayer` 收编成精灵兼容驱动而不推倒重写。不涉及真实 Live2D 渲染(那是 Phase 4)。
+5. ~~Phase 3(PetRenderer 抽象 + 精灵兼容驱动)~~ **已完成**,详见 §2c。**本地 `main` 尚未 push 到 `origin/main`**(领先 origin 7 个提交)。
+6. 就绪后,针对 **Phase 4(PixiJS/Live2D 最小加载)** 走 brainstorming → writing-plans 流程。核心工作:实现 `Live2DPetRenderer`(实现 Phase 3 定义的 `PetRenderer` 接口)、接入 `kibo-pet://` 协议 handler(token 铸造 + `registerSchemesAsPrivileged` + `installKiboPetProtocolHandler`)、处理引擎版本兼容问题(主设计文档 §17.2/§17.5,Phase 2 设计文档前置备忘录第 7 条)。不涉及动态窗口/锚点/无闪烁热切换(那是 Phase 5)。
