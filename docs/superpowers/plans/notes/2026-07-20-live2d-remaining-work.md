@@ -6,7 +6,7 @@
 
 | 阶段 | 状态 |
 |---|---|
-| Phase 0:GPU reboot-degrade | 代码基本完成 + 真机验证过,**未合并进 main**,需 reconcile |
+| Phase 0:GPU reboot-degrade | **已 reconcile 并合并进 `main`(`01db719`,squash 单提交,本地未推送)** |
 | **Phase 1:Electron 31→43 升级 + 全回归** | **代码+自动化完成,已合并 `main` 并推送 `origin/main`(`3b1f8bb`)。真机 GUI/安装验收待用户** |
 | Phase 2:宠物包 v2 + 导入器 + 资源协议 | 未开始(计划未写) |
 | Phase 3:PetRenderer 抽象 + 精灵兼容驱动 | 未开始 |
@@ -44,20 +44,21 @@
 - [ ] **尤其确认不复现 MVP-06 的打包秒退**(GPU 子进程 `0xC0000135` 崩溃根因,当时靠 `app.disableHardwareAcceleration()` 修复;新 Electron/Chromium 的 GPU 子进程行为可能与 31 不同,若崩溃按 WER LocalDumps → minidump 解析法重新诊断,详见记忆 `packaged-gui-gpu-crash`)
 - [ ] E: 盘符(非标准 ACL)已知会触发该崩溃,用户已接受装 C:/D:,本阶段不特别验证 E:
 
-### 1.3 GPU 双模式回归(阻塞于 Phase 0 reconcile,见下)
+### 1.3 GPU 双模式回归(Phase 0 已 reconcile,待执行)
 
-- [ ] Phase 0 合并后,补做硬件加速实验开关模式下的完整回归(本阶段只验证了默认软件渲染模式)
+- [ ] 补做硬件加速实验开关模式下的完整回归(本阶段只验证了默认软件渲染模式)
 
 完整过程记录:`docs/superpowers/plans/notes/2026-07-20-phase1-baseline.md`;实施计划:`docs/superpowers/plans/2026-07-20-live2d-phase1-electron-upgrade.md`。
 
 ---
 
-## 2. Phase 0(GPU reboot-degrade)——待办
+## 2. Phase 0(GPU reboot-degrade)——已 reconcile
 
-- worktree `.claude/worktrees/gpu-accel-reboot-degrade`(分支 `worktree-gpu-accel-reboot-degrade`,HEAD `66a0cda`)代码基本完成、**用户真机验证过**:新增 `src/shared/gpuBootDecision.ts`+test、设置页"尝试启用硬件加速渲染(实验性)"复选框、`main/index.ts` 接入 GPU 启动决策 + reboot-degrade(默认仍软渲染,勾选才走重启升级 + 启动标记文件兜底崩溃)。
-- **该 worktree branch 早于 2026-07-20 的"对话框重做 + 宠物热切换"合并**,已与当前 `main` 分叉(diff 显示它缺 `petSession.ts`、双栏对话框等)。
-- [ ] **待办:reconcile 该 worktree 到当前 main,解决分叉,合并进 main。** 这是 Live2D 60FPS WebGL 目标的硬前提(全项目当前仍是 `app.disableHardwareAcceleration()` 静态软渲染,PixiJS WebGL 模型跑不到 60FPS)。
-- 合并后回来补 Phase 1 的 GPU 双模式回归(见上 §1.3)。
+- 2026-07-20:用 `git merge --squash worktree-gpu-accel-reboot-degrade`(12 个提交,含已废弃的 overlay-render-spike 真机结论记录)一次性解决与 main 的分叉(唯一重叠文件 `chat.test.ts` 无重叠行,无冲突),squash 成单提交 `01db719` 后 fast-forward 合并进 `main`。typecheck 通过,796/796 测试通过。**本地已合并,尚未 push 到 `origin/main`。**
+- 内容:新增 `src/shared/gpuBootDecision.ts`+test、设置页"尝试启用硬件加速渲染(实验性)"复选框、`main/index.ts` 接入 GPU 启动决策 + reboot-degrade(默认仍软渲染,勾选才走重启升级 + 启动标记文件兜底崩溃)。`AppSettings.schemaVersion` 13→14。
+- 原 worktree(`.claude/worktrees/gpu-accel-reboot-degrade`,分支 `worktree-gpu-accel-reboot-degrade`)代码已并入 main,**待用户确认后可清理**(`git worktree remove` + `git branch -D worktree-gpu-accel-reboot-degrade`);worktree 目录内有一个未跟踪的 `pets/yyz/` 测试残留,清理前一并确认是否需要保留。
+- [ ] 待办:push 到 `origin/main`(需用户确认)
+- [ ] 待办:合并后补 Phase 1 的 GPU 双模式回归(见上 §1.3)——真机验收,agent 会话无法自动化。
 
 ---
 
@@ -80,6 +81,6 @@
 
 ## 下一步建议
 
-1. **Phase 0 reconcile**(阻塞 Phase 1 的 GPU 双模式回归 + 后续所有 Live2D 渲染阶段)
-2. 用户完成 §1 的 Phase 1 真机验收清单
+1. ~~Phase 0 reconcile~~ **已完成(2026-07-20,本地 `main` @ `01db719`)**——push 到 `origin/main` 待用户确认
+2. 用户完成 §1 的 Phase 1 真机验收清单(含新解锁的 §1.3 GPU 双模式回归)
 3. 就绪后,针对 Phase 2(宠物包 v2 + 导入器 + 资源协议)走 brainstorming → writing-plans 流程,写入上面 §3 的隐患清单
