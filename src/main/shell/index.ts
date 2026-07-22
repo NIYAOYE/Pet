@@ -227,9 +227,14 @@ export async function startShell(): Promise<void> {
   const initialSizeSource: PetRenderSource = initialSource.type === 'live2d'
     ? { ...initialSource, resourceBaseUrl: '' }
     : initialSource
+  // 宠物窗口尺寸的唯一权威来源:只在这里初始化、只在 switchPet() 提交阶段更新,绝不能从
+  // petWin.getSize() 实时读回再喂回 setBounds()——那样会让 OS 级四舍五入误差在拖拽/自主
+  // 游走这类高频调用里逐帧累积增长,本项目已经在宠物窗口位置累积器(walkPreciseX/Y)和
+  // 气泡窗尺寸(bubbleWindow.ts 的 place())上踩过两次几乎同款的坑。
+  let currentPetSize = windowSizeForSource(initialSizeSource)
   const petWin = createPetWindow({
     preload, url: rendererUrl, indexHtml: petHtml,
-    initialSize: windowSizeForSource(initialSizeSource)
+    initialSize: currentPetSize
   })
   const idleWatcher = startIdleWatcher(petWin)
 
@@ -268,8 +273,7 @@ export async function startShell(): Promise<void> {
 
   function petBoundsFull(): Bounds {
     const [x, y] = petWin.getPosition()
-    const [width, height] = petWin.getSize()
-    return { x, y, width, height }
+    return { x, y, ...currentPetSize }
   }
   function petWorkArea(): Bounds {
     const b = petBoundsFull()
@@ -586,10 +590,15 @@ export async function startShell(): Promise<void> {
       session.startVoice()             // 端口已释放,启新宠物语音(未配置则静默不启)
       saveSettings(settingsFile, { ...loadSettings(settingsFile), activePetId: petId })
 
+      // 先按旧尺寸取一次 bounds/workArea 再更新 currentPetSize——footAnchorPreservingBounds
+      // 需要"旧窗口"的真实旧尺寸才能算对锚点平移量,顺序反了 petBoundsFull() 会提前吐出新尺寸。
+      const oldBounds = petBoundsFull()
+      const oldWorkArea = petWorkArea()
       const newSize = windowSizeForSource(source)
+      currentPetSize = newSize
       const newBounds = source.type === 'live2d'
-        ? footAnchorPreservingBounds(petBoundsFull(), newSize, petWorkArea())
-        : { ...petBoundsFull(), ...newSize } // 精灵包不参与脚底锚点体系(见设计文档 §5):保持左上角不变,只在尺寸确实需要变化时(例如从 Live2D 切回精灵)校正宽高
+        ? footAnchorPreservingBounds(oldBounds, newSize, oldWorkArea)
+        : { ...oldBounds, ...newSize } // 精灵包不参与脚底锚点体系(见设计文档 §5):保持左上角不变,只在尺寸确实需要变化时(例如从 Live2D 切回精灵)校正宽高
       petWin.setBounds(newBounds)
 
       petWin.webContents.send(IPC.PET_COMMIT, { requestId }) // 渲染层原子切到已准备好的新模型
@@ -662,8 +671,7 @@ export async function startShell(): Promise<void> {
 
   function petBounds(): { x: number; y: number; width: number } {
     const [x, y] = petWin.getPosition()
-    const [width] = petWin.getSize()
-    return { x, y, width }
+    return { x, y, width: currentPetSize.width }
   }
   function toggleDialog(): void { dialog.toggle(petBounds) }
 
@@ -729,7 +737,7 @@ export async function startShell(): Promise<void> {
   })
   ipcMain.handle(IPC.GET_WINDOW_BOUNDS, async (): Promise<WindowBounds> => {
     const [x, y] = petWin.getPosition()
-    const [width, height] = petWin.getSize()
+    const { width, height } = currentPetSize
     const workArea = screen.getDisplayMatching({ x, y, width, height }).workArea
     return { workArea, window: { x, y, width, height } }
   })
@@ -737,7 +745,7 @@ export async function startShell(): Promise<void> {
     const delta = validateMoveDelta(raw)
     if (!delta) return undefined
     const [x, y] = petWin.getPosition()
-    const [width, height] = petWin.getSize()
+    const { width, height } = currentPetSize
     if (isZeroMove(delta)) {
       const workArea = screen.getDisplayMatching({ x, y, width, height }).workArea
       return { workArea, window: { x, y, width, height } }
