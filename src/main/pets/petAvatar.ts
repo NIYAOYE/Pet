@@ -2,6 +2,7 @@ import { nativeImage } from 'electron'
 import { existsSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { frameRect, parsePetManifest, isLive2DManifestRaw, parseLive2DManifest } from '@shared/petPackage'
+import { isPathSafe } from './importSecurity'
 
 const AVATAR_PX = 48
 
@@ -25,6 +26,13 @@ export function createPetAvatarCache(): { avatarOf: (petDir: string, petId: stri
         if (isLive2DManifestRaw(raw)) {
           const manifest = parseLive2DManifest(raw)
           if (!manifest.thumbnail) return ''
+          // 防御纵深(C-1 第二道关卡):裁头像给宠物选择器每一个已列出的宠物都会跑一次,单是
+          // "打开宠物选择器"就会触发读取。import 时(petCatalog.ts importLive2DPet)已经校验
+          // 过 thumbnail,这里再补一道是防一份已经落地/被手工改过的 pet.json——不合法就走下面
+          // 统一的 catch,和这个函数里其它失败模式(解码失败/缺字段)一致地退回 ''。
+          if (!isPathSafe(petDir, manifest.thumbnail)) {
+            throw new Error(`thumbnail 路径不安全:${manifest.thumbnail}`)
+          }
           const thumbPath = join(petDir, manifest.thumbnail)
           const mtimeMs = statSync(thumbPath).mtimeMs
           const hit = cache.get(petId)
@@ -38,6 +46,10 @@ export function createPetAvatarCache(): { avatarOf: (petDir: string, petId: stri
         const manifest = parsePetManifest(raw)
         const idle = manifest.animations.idle
         if (!idle) return ''
+        // 防御纵深(C-1 第二道关卡,同上——本函数的 sprite 分支同理)。
+        if (!isPathSafe(petDir, manifest.spritesheetPath)) {
+          throw new Error(`spritesheetPath 路径不安全:${manifest.spritesheetPath}`)
+        }
         const sheetPath = join(petDir, manifest.spritesheetPath)
         const mtimeMs = statSync(sheetPath).mtimeMs
         const hit = cache.get(petId)

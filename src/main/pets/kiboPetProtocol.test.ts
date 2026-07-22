@@ -85,4 +85,14 @@ describe('createKiboPetProtocolRegistry', () => {
     reg.revokeToken(token)
     expect(reg.resolveRequest(`kibo-pet://${token}/character.model3.json`)).toEqual({ error: 404 })
   })
+  // M-1: 一个格式错误的百分号转义(如 %zz)会让 decodeURIComponent 抛 URIError;之前
+  // resolveRequest 没有包一层 try/catch,会让整个函数往外抛,导致 protocol.handle 那个
+  // Promise 被 reject(而不是这个函数里其它非法请求统一返回的干净 { error: 404 })。
+  it('返回干净的 { error: 404 } 而不是抛出,当路径段含格式错误的百分号转义时', () => {
+    const reg = createKiboPetProtocolRegistry()
+    const dir = scratchModelDir()
+    const token = reg.registerToken(dir)
+    expect(() => reg.resolveRequest(`kibo-pet://${token}/model%zzbad.json`)).not.toThrow()
+    expect(reg.resolveRequest(`kibo-pet://${token}/model%zzbad.json`)).toEqual({ error: 404 })
+  })
 })

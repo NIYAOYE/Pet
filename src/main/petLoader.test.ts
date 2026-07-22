@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import { resolve } from 'path'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadPet } from './petLoader'
 
@@ -48,5 +48,24 @@ describe('loadPet', () => {
 
   it('throws on a directory without pet.json', async () => {
     await expect(loadPet(resolve(__dirname, '__no_such_pet_dir__'))).rejects.toThrow()
+  })
+
+  // 防御纵深(C-1 的第二道关卡):即便一个恶意/被篡改过的 pet.json 绕过了 import 时的
+  // isPathSafe 校验、直接落到了 petDir 里,loadPet() 自己也不能无条件读盘。
+  it('rejects a spritesheetPath that escapes petDir, even when the traversal target actually exists (would otherwise read+exfiltrate an arbitrary file)', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'petloader-traversal-'))
+    const dir = join(root, 'evil')
+    mkdirSync(dir, { recursive: true })
+    const outsideRoot = mkdtempSync(join(tmpdir(), 'petloader-outside-'))
+    const outsideFile = join(outsideRoot, 'secret.webp')
+    writeFileSync(outsideFile, 'super-secret-bytes-outside-petDir', 'utf-8')
+    const traversalRelPath = relative(dir, outsideFile)
+    const manifest = {
+      id: 'evil', displayName: 'Evil', description: 'd', spritesheetPath: traversalRelPath,
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    await expect(loadPet(dir)).rejects.toThrow()
   })
 })

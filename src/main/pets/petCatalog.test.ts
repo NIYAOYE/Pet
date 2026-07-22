@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 import { isValidPetId, listPets, stageImportPet, commitStagedPet, discardStagedPet, cleanupStaleStaging } from './petCatalog'
 
@@ -141,6 +141,29 @@ describe('stageImportPet', () => {
     writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
     const r = stageImportPet(dir, { bundledPetsDir: scratch(), userPetsDir: scratch() })
     expect(r).toMatchObject({ ok: false, reason: 'missing-spritesheet' })
+  })
+
+  it('spritesheetPath 路径穿越出 srcDir → path-traversal,不提交(C-1 回归:即便穿越目标真实存在也必须拒绝,而不是当作 missing-spritesheet 放行)', () => {
+    const src = scratch()
+    const user = scratch()
+    const dir = join(src, 'x'); mkdirSync(dir, { recursive: true })
+    // 穿越目标放在一个完全独立的 scratch 目录里,且真实存在——这样如果 import 时没有
+    // isPathSafe 守卫,existsSync 检查会通过,包会被正常提交(即 C-1 描述的漏洞本身),
+    // 而不是被 missing-spritesheet 意外挡住,从而让这个用例失去区分度。
+    const outsideDir = scratch()
+    const outsideFile = join(outsideDir, 'secret.webp')
+    writeFileSync(outsideFile, 'super-secret-bytes-outside-srcDir', 'utf-8')
+    const traversalRelPath = relative(dir, outsideFile)
+    const manifest = {
+      id: 'traversalsprite', displayName: 'X', description: 'd', spritesheetPath: traversalRelPath,
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const r = stageImportPet(dir, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(r).toMatchObject({ ok: false, reason: 'path-traversal' })
+    expect(existsSync(join(user, '.staging'))).toBe(false)
+    expect(existsSync(join(user, 'traversalsprite'))).toBe(false)
   })
 
   it('id 含路径穿越 → bad-id', () => {

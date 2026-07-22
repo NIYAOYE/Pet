@@ -1,6 +1,6 @@
 import { describe, it, expect, vi } from 'vitest'
 import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { join, relative } from 'node:path'
 import { tmpdir } from 'node:os'
 
 // `require('electron')` under plain vitest (not the real Electron binary) resolves to a
@@ -63,5 +63,44 @@ describe('createPetAvatarCache — live2d thumbnail branch', () => {
     writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
     const cache = createPetAvatarCache()
     expect(cache.avatarOf(dir, 'y')).toMatch(/^data:image\/png;base64,/)
+  })
+
+  // 防御纵深(C-1 第二道关卡的另一处触发点):裁头像给宠物选择器每一个已列出的宠物都会跑
+  // 一次,单是"打开宠物选择器"就会触发读取——即便一份恶意/被篡改过的 pet.json 绕过了
+  // import 时的校验、直接落到了 petDir 里,这里也不能无条件读盘。
+  it('live2d 包 thumbnail 路径穿越出 petDir → 返回空字符串,不读取外部文件(即便穿越目标真实存在)', () => {
+    const dir = scratch()
+    mkdirSync(join(dir, 'model'), { recursive: true })
+    const outsideDir = scratch()
+    const outsideFile = join(outsideDir, 'secret.png')
+    writeFileSync(outsideFile, fakePngBytes())
+    const traversalRelPath = relative(dir, outsideFile)
+    const manifest = {
+      schemaVersion: 2, id: 'w', displayName: 'W', description: 'd', thumbnail: traversalRelPath,
+      render: { type: 'live2d', model: 'model/w.model3.json', viewport: { width: 1, height: 1, resolutionCap: 1 },
+        transform: { scale: 1, offsetX: 0, offsetY: 0, anchorX: 0, anchorY: 0, bubbleAnchorX: 0, bubbleAnchorY: 0 },
+        interaction: { mirrorOnWalk: false, mouseTracking: false, lipSyncParameter: 'p' }, stateMap: {} }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const cache = createPetAvatarCache()
+    expect(cache.avatarOf(dir, 'w')).toBe('')
+  })
+})
+
+describe('createPetAvatarCache — sprite spritesheet 分支', () => {
+  it('spritesheetPath 路径穿越出 petDir → 返回空字符串,不读取外部文件(即便穿越目标真实存在)', () => {
+    const dir = scratch()
+    const outsideDir = scratch()
+    const outsideFile = join(outsideDir, 'secret.webp')
+    writeFileSync(outsideFile, fakePngBytes())
+    const traversalRelPath = relative(dir, outsideFile)
+    const manifest = {
+      id: 'z', displayName: 'Z', description: 'd', spritesheetPath: traversalRelPath,
+      sheet: { rows: 13, cols: 8, cellWidth: 192, cellHeight: 208 },
+      animations: { idle: { row: 0, frames: 4, fps: 6, loop: true } }
+    }
+    writeFileSync(join(dir, 'pet.json'), JSON.stringify(manifest), 'utf-8')
+    const cache = createPetAvatarCache()
+    expect(cache.avatarOf(dir, 'z')).toBe('')
   })
 })

@@ -19,6 +19,7 @@ export function isPathSafe(baseDir: string, candidateRelPath: string): boolean {
   if (isAbsolute(candidateRelPath)) return false
   if (candidateRelPath.startsWith('\\\\') || candidateRelPath.startsWith('//')) return false
   if (/^[A-Za-z]:/.test(candidateRelPath)) return false
+  if (/[\x00-\x1f]/.test(candidateRelPath)) return false
   const base = resolve(baseDir)
   const resolved = resolve(base, candidateRelPath)
   return resolved === base || resolved.startsWith(base + sep)

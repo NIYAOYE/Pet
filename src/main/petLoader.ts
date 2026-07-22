@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { parsePetManifest, parseLive2DManifest, isLive2DManifestRaw, type Live2DManifest, type PetManifest } from '@shared/petPackage'
+import { isPathSafe } from './pets/importSecurity'
 
 export function petsDir(appRoot: string): string {
   return join(appRoot, 'pets')
@@ -20,6 +21,12 @@ export async function loadPet(petDir: string): Promise<LoadedPetSource> {
     return { type: 'live2d', manifest }
   }
   const manifest = parsePetManifest(manifestRaw)
+  // 防御纵深:import 时(petCatalog.ts importSpritePet)已经校验过 spritesheetPath,但这里
+  // 读的是一个已经落地的 pet.json——万一将来出现别的写入路径,或者 pet.json 被在磁盘上
+  // 手工改过,这道守卫能防止一次穿越读到 petDir 之外的任意本机文件再回传渲染进程。
+  if (!isPathSafe(petDir, manifest.spritesheetPath)) {
+    throw new Error(`spritesheetPath 路径不安全:${manifest.spritesheetPath}`)
+  }
   const sheetBytes = await readFile(join(petDir, manifest.spritesheetPath))
   const spritesheetDataUrl = `data:image/webp;base64,${sheetBytes.toString('base64')}`
   return { type: 'sprite', manifest, spritesheetDataUrl }

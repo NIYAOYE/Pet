@@ -22,6 +22,12 @@ describe('isPathSafe', () => {
     expect(isPathSafe('C:/pets/foo', '../../evil.png')).toBe(false)
     expect(isPathSafe('C:/pets/foo', 'model/../../evil.png')).toBe(false)
   })
+  // M-4: 内嵌控制字符(如 NUL 字节)不触发上面任何一条检查(非绝对路径、非 UNC、非盘符、
+  // 无 ..),下游的 existsSync/readFileSync/cpSync 目前是靠"抛异常被上层 catch"来兜底,
+  // 而不是这个函数自己的契约——加一道显式拒绝,做纯字符串层面的 belt-and-suspenders。
+  it('rejects embedded control characters (e.g. a NUL byte)', () => {
+    expect(isPathSafe('C:/pets/foo', 'foo\x00bar')).toBe(false)
+  })
 })
 
 describe('scanImportSource', () => {

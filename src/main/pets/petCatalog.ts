@@ -80,6 +80,14 @@ function importSpritePet(
   } catch (e) {
     return { ok: false, reason: 'invalid-manifest', message: `pet.json 不合法:${(e as Error).message}` }
   }
+  // spritesheetPath 是导入包 pet.json 里未经信任的数据——在拼路径读盘前必须过一遍
+  // isPathSafe,否则一个精心构造的 "../../../../some/system/file" 就能让下面的
+  // existsSync/cpSync 读到 srcDir 之外的任意本机文件,且该路径会被原样写回提交后的
+  // pet.json,导致 petLoader.ts/petAvatar.ts 加载时再次读出同一份任意文件并回传渲染进程
+  // (路径穿越/信息泄露/文件回传,与 importLive2DPet 对 render.model/thumbnail 的守卫同款)。
+  if (!isPathSafe(srcDir, manifest.spritesheetPath)) {
+    return { ok: false, reason: 'path-traversal', message: `spritesheetPath 路径不安全:${manifest.spritesheetPath}` }
+  }
   if (!existsSync(join(srcDir, manifest.spritesheetPath))) {
     return { ok: false, reason: 'missing-spritesheet', message: `找不到精灵图:${manifest.spritesheetPath}` }
   }

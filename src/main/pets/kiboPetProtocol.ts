@@ -57,7 +57,16 @@ export function createKiboPetProtocolRegistry(): {
       const root = tokens.get(authority)
       if (!root) return { error: 404 }
 
-      const relPath = decodeURIComponent(pathAndQuery).replace(/^\/+/, '')
+      // 格式错误的百分号转义(如 "%zz")会让 decodeURIComponent 抛 URIError;这里必须捕获
+      // 掉,不然会让整个 resolveRequest 往外抛,导致 protocol.handle 的 Promise 被 reject,
+      // 而不是这个函数里其它非法请求统一返回的干净 { error: 404 }。
+      let decodedPath: string
+      try {
+        decodedPath = decodeURIComponent(pathAndQuery)
+      } catch {
+        return { error: 404 }
+      }
+      const relPath = decodedPath.replace(/^\/+/, '')
       const ext = extname(relPath).toLowerCase()
       const mimeType = ALLOWED_EXTENSIONS[ext]
       if (!mimeType) return { error: 403 }
