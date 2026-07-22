@@ -58,3 +58,7 @@ pnpm vitest run -t "<name>"          # run tests matching a name
 - Be ashamed of making changes blindly; take pride in refactoring with care.
 - Be ashamed of hard-coding magic values; take pride in using configuration, constants, and clear abstractions.
 - Be ashamed of vague and inconsistent commits; take pride in writing clear, standardized commit messages in Chinese.
+
+# SquashCommitConstraint
+
+While working on the feature, you are allowed to create Git commits to preserve your working state. After development is fully completed, revert all interim commits and consolidate all modifications into one single commit.
