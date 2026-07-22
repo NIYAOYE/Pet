@@ -66,25 +66,32 @@ async function addFiles(files: Iterable<File>): Promise<void> {
   if (out.length) addPending(out)
 }
 
-/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;失败(如包缺 idle 动画,或宠物
- *  是 live2d 类型)时静默放弃,头像元素退回 CSS 里的浅紫底色占位,不影响聊天功能本身。 */
+/** 从宠物 spritesheet 裁出 idle 动画首帧,作为聊天室头像;sprite 包缺 idle 动画、或宠物是
+ *  live2d 类型(没有 spritesheet 可裁)时,退回主进程 listPetsForChat() 已经算好的当前活跃
+ *  宠物头像(live2d 走 manifest.thumbnail,见 petAvatar.ts)——两条路径都必须显式赋值
+ *  avatarEl.style.backgroundImage(哪怕是清空),不能提前 return,否则切换宠物后头像会
+ *  停留在切换前那只宠物的画面上(真机验收发现的真实 bug,而不是设计如此)。 */
 async function loadAvatar(): Promise<void> {
   const pet = await window.petApi.getPet()
   petNameEl.textContent = pet.manifest.displayName
-  if (pet.type !== 'sprite') return
-  const idle = pet.manifest.animations.idle
-  if (!idle) return
-  const rect = frameRect(pet.manifest.sheet, idle.row, 0)
-  const img = new Image()
-  img.src = pet.spritesheetDataUrl
-  await img.decode()
-  const canvas = document.createElement('canvas')
-  canvas.width = rect.w
-  canvas.height = rect.h
-  const ctx = canvas.getContext('2d')!
-  ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h)
-  avatarDataUrl = canvas.toDataURL()
-  avatarEl.style.backgroundImage = `url(${avatarDataUrl})`
+  if (pet.type === 'sprite' && pet.manifest.animations.idle) {
+    const idle = pet.manifest.animations.idle
+    const rect = frameRect(pet.manifest.sheet, idle.row, 0)
+    const img = new Image()
+    img.src = pet.spritesheetDataUrl
+    await img.decode()
+    const canvas = document.createElement('canvas')
+    canvas.width = rect.w
+    canvas.height = rect.h
+    const ctx = canvas.getContext('2d')!
+    ctx.drawImage(img, rect.x, rect.y, rect.w, rect.h, 0, 0, rect.w, rect.h)
+    avatarDataUrl = canvas.toDataURL()
+    avatarEl.style.backgroundImage = `url(${avatarDataUrl})`
+    return
+  }
+  const items = await window.chatApi.listPetsForChat().catch(() => [])
+  avatarDataUrl = items.find((it) => it.active)?.avatarDataUrl ?? ''
+  avatarEl.style.backgroundImage = avatarDataUrl ? `url(${avatarDataUrl})` : ''
 }
 
 /** 左栏一行:头像(裁不出则退回 CSS 色块占位)+ 名字 + 末条预览;当前活跃宠物高亮且不可点。 */
