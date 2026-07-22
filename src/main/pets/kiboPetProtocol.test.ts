@@ -13,9 +13,14 @@ function scratchModelDir(): string {
 }
 
 describe('KIBO_PET_SCHEME_PRIVILEGES', () => {
-  it('is standard/secure/fetch-enabled and not CORS-open', () => {
+  it('is standard/secure/fetch-enabled/CORS-enabled, does not bypass CSP', () => {
     expect(KIBO_PET_SCHEME_PRIVILEGES.scheme).toBe('kibo-pet')
-    expect(KIBO_PET_SCHEME_PRIVILEGES.privileges).toMatchObject({ standard: true, secure: true, supportFetchAPI: true })
+    // corsEnabled 必须是 true——渲染层(file:// 源)通过 XHR/fetch 跨源加载模型资源,
+    // Chromium 只看这个声明,声明成 false 会在真机上把所有跨源请求拦在 handler 之前
+    // (Phase 4 真机验证时实际复现过)。
+    expect(KIBO_PET_SCHEME_PRIVILEGES.privileges).toMatchObject({
+      standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, bypassCSP: false
+    })
   })
 })
 
