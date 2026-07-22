@@ -27,6 +27,25 @@ function assert(cond: unknown, msg: string): asserts cond {
   if (!cond) throw new Error(msg)
 }
 
+/** voice 是清单顶层字段,sprite/live2d 两种包共用同一份校验规则(见主设计文档 §4.1
+ *  "voice 继续保留在清单顶层"),不区分渲染类型。 */
+function assertVoiceIfPresent(m: Record<string, any>): void {
+  if (m.voice === undefined) return
+  const v = m.voice
+  assert(v && typeof v === 'object', 'manifest.voice must be an object when present')
+  for (const k of ['refAudio', 'refText']) {
+    assert(typeof v[k] === 'string' && v[k].length > 0, `manifest.voice.${k} must be a non-empty string`)
+  }
+  const hasGpt = typeof v.gptModel === 'string' && v.gptModel.length > 0
+  const hasSovits = typeof v.sovitsModel === 'string' && v.sovitsModel.length > 0
+  assert(hasGpt === hasSovits, 'manifest.voice.gptModel and sovitsModel must both be present or both be absent')
+  const hasOnnx = typeof v.onnxModel === 'string' && v.onnxModel.length > 0
+  assert(hasGpt || hasOnnx, 'manifest.voice must provide either onnxModel or both gptModel/sovitsModel')
+  if (hasOnnx) {
+    assert(v.language === 'zh' || v.language === 'ja' || v.language === 'en', 'manifest.voice.language must be zh/ja/en when onnxModel is present')
+  }
+}
+
 export function parsePetManifest(raw: unknown): PetManifest {
   const m = raw as Record<string, any>
   assert(m && typeof m === 'object', 'manifest must be an object')
@@ -48,21 +67,7 @@ export function parsePetManifest(raw: unknown): PetManifest {
     }
     assert(typeof a.loop === 'boolean', `animation ${key}.loop must be a boolean`)
   }
-  if (m.voice !== undefined) {
-    const v = m.voice
-    assert(v && typeof v === 'object', 'manifest.voice must be an object when present')
-    for (const k of ['refAudio', 'refText']) {
-      assert(typeof v[k] === 'string' && v[k].length > 0, `manifest.voice.${k} must be a non-empty string`)
-    }
-    const hasGpt = typeof v.gptModel === 'string' && v.gptModel.length > 0
-    const hasSovits = typeof v.sovitsModel === 'string' && v.sovitsModel.length > 0
-    assert(hasGpt === hasSovits, 'manifest.voice.gptModel and sovitsModel must both be present or both be absent')
-    const hasOnnx = typeof v.onnxModel === 'string' && v.onnxModel.length > 0
-    assert(hasGpt || hasOnnx, 'manifest.voice must provide either onnxModel or both gptModel/sovitsModel')
-    if (hasOnnx) {
-      assert(v.language === 'zh' || v.language === 'ja' || v.language === 'en', 'manifest.voice.language must be zh/ja/en when onnxModel is present')
-    }
-  }
+  assertVoiceIfPresent(m)
   return m as PetManifest
 }
 
@@ -101,6 +106,7 @@ export interface Live2DManifest {
   id: string; displayName: string; description: string
   thumbnail?: string
   render: Live2DRender
+  voice?: PetVoice
 }
 
 /** 便宜的判别式检查,不做完整校验;用来决定该走哪个解析器。 */
@@ -162,6 +168,7 @@ export function parseLive2DManifest(raw: unknown): Live2DManifest {
     if (e.description !== undefined) assert(typeof e.description === 'string', `manifest.render.stateMap.${key}.description must be a string`)
   }
 
+  assertVoiceIfPresent(m)
   return m as Live2DManifest
 }
 

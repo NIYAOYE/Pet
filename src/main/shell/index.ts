@@ -961,7 +961,7 @@ export async function startShell(): Promise<void> {
     let activePetVoice: PetVoice | undefined
     try {
       const loadedForVoice = await loadPet(session.petDir)
-      activePetVoice = loadedForVoice.type === 'sprite' ? loadedForVoice.manifest.voice : undefined
+      activePetVoice = loadedForVoice.manifest.voice
     } catch {
       activePetVoice = undefined
     }

@@ -220,3 +220,37 @@ describe('parseLive2DManifest', () => {
     expect(m.render.possibleWatermark).toBeUndefined()
   })
 })
+
+describe('parseLive2DManifest voice 字段(可选,与 sprite 共用同一份校验规则)', () => {
+  it('缺失 voice 字段 → 解析成功,voice 为 undefined', () => {
+    const m = parseLive2DManifest(validLive2D)
+    expect(m.voice).toBeUndefined()
+  })
+
+  it('完整 voice 字段 → 原样保留', () => {
+    const m = parseLive2DManifest({
+      ...validLive2D,
+      voice: { gptModel: 'voice/a.ckpt', sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })
+    expect(m.voice).toEqual({ gptModel: 'voice/a.ckpt', sovitsModel: 'voice/a.pth', refAudio: 'voice/a.wav', refText: 'voice/a.txt' })
+  })
+
+  it('voice 字段存在但缺子字段 → 抛错', () => {
+    expect(() => parseLive2DManifest({ ...validLive2D, voice: { gptModel: 'x' } })).toThrow()
+  })
+
+  it('onnxModel 变体 → 原样保留', () => {
+    const m = parseLive2DManifest({
+      ...validLive2D,
+      voice: { onnxModel: 'voice/alice-onnx', refAudio: 'voice/a.wav', refText: 'voice/a.txt', language: 'ja' }
+    })
+    expect(m.voice).toEqual({ onnxModel: 'voice/alice-onnx', refAudio: 'voice/a.wav', refText: 'voice/a.txt', language: 'ja' })
+  })
+
+  it('只给 gptModel 不给 sovitsModel → 抛错', () => {
+    expect(() => parseLive2DManifest({
+      ...validLive2D,
+      voice: { gptModel: 'voice/a.ckpt', refAudio: 'voice/a.wav', refText: 'voice/a.txt' }
+    })).toThrow()
+  })
+})

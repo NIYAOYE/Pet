@@ -148,7 +148,7 @@ export function createPetSession(petId: string, deps: PetSessionDeps): PetSessio
     let petVoice: PetVoice | undefined
     try {
       const source = await loadPet(petDir)
-      petVoice = source.type === 'sprite' ? source.manifest.voice : undefined
+      petVoice = source.manifest.voice
     } catch {
       return
     }
