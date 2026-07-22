@@ -7,7 +7,7 @@ import {
   type BubbleApi, type BubblePlace, type ContextSignalKind,
   type VoiceApi, type VoiceInstallProgress, type VoicePcmChunk,
   type GenieVoiceApi, type GenieInstallProgress,
-  type PetChatListItem, type PetSwitchedPayload
+  type PetChatListItem, type PetSwitchedPayload, type Live2DTransformPatch
 } from '@shared/ipc'
 import type { AppSettings, ProviderSettings } from '@shared/llm'
 import type { PetRenderSource } from '@shared/petPackage'
@@ -33,7 +33,9 @@ const petApi: PetApi = {
   onPetChanged: (cb: () => void): void => {
     ipcRenderer.removeAllListeners(IPC.PET_CHANGED)
     ipcRenderer.on(IPC.PET_CHANGED, () => cb())
-  }
+  },
+  updateLive2DTransform: (patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }> =>
+    ipcRenderer.invoke(IPC.UPDATE_LIVE2D_TRANSFORM, patch)
 }
 
 const chatApi: ChatApi = {

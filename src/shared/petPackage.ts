@@ -71,6 +71,8 @@ export interface Live2DTransform {
   scale: number; offsetX: number; offsetY: number
   anchorX: number; anchorY: number
   bubbleAnchorX: number; bubbleAnchorY: number
+  /** true 表示已经跑过一次自动测算(或被人工核对/覆盖过),Live2DPetRenderer.load() 不需要重新计算。 */
+  autoFitted?: boolean
 }
 export interface Live2DInteraction { mirrorOnWalk: boolean; mouseTracking: boolean; lipSyncParameter: string }
 export interface Live2DStateMapEntry {
@@ -90,6 +92,9 @@ export interface Live2DRender {
   transform: Live2DTransform
   interaction: Live2DInteraction
   stateMap: Record<string, Live2DStateMapEntry>
+  /** 导入时检测到模型原始没有声明任何动作/表情(见 live2dOrphanResources.detectPossibleWatermarkProtection),
+   *  运行时据此尝试自动破冰(见 Live2DPetRenderer.load())。 */
+  possibleWatermark?: boolean
 }
 export interface Live2DManifest {
   schemaVersion: 2
@@ -118,6 +123,9 @@ export function parseLive2DManifest(raw: unknown): Live2DManifest {
   assert(r && typeof r === 'object', 'manifest.render is required')
   assert(r.type === 'live2d', 'manifest.render.type must be "live2d"')
   assert(typeof r.model === 'string' && r.model.length > 0, 'manifest.render.model must be a non-empty string')
+  if (r.possibleWatermark !== undefined) {
+    assert(typeof r.possibleWatermark === 'boolean', 'manifest.render.possibleWatermark must be a boolean when present')
+  }
 
   const vp = r.viewport
   assert(vp && typeof vp === 'object', 'manifest.render.viewport is required')
@@ -129,6 +137,9 @@ export function parseLive2DManifest(raw: unknown): Live2DManifest {
   assert(tr && typeof tr === 'object', 'manifest.render.transform is required')
   for (const k of ['scale', 'offsetX', 'offsetY', 'anchorX', 'anchorY', 'bubbleAnchorX', 'bubbleAnchorY']) {
     assert(typeof tr[k] === 'number', `manifest.render.transform.${k} must be a number`)
+  }
+  if (tr.autoFitted !== undefined) {
+    assert(typeof tr.autoFitted === 'boolean', 'manifest.render.transform.autoFitted must be a boolean when present')
   }
 
   const it = r.interaction

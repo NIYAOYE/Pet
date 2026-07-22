@@ -277,12 +277,24 @@ describe('importPetFolder — 统一 staging 流程', () => {
     expect(written.FileReferences.Expressions).toHaveLength(1)
   })
 
-  it('live2d 包:补丁后仍无动作/表情 → warnings 含水印提示,但仍然导入成功', () => {
+  it('live2d 包:补丁后仍无动作/表情 → warnings 含水印提示,pet.json 打上 possibleWatermark:true,仍然导入成功', () => {
     const src = scratch(); const user = scratch()
     const petSrc = makeLive2DPet(src, 'watermarked', '水印')
     const r = importPetFolder(petSrc, { bundledPetsDir: scratch(), userPetsDir: user })
     expect(r.ok).toBe(true)
     if (r.ok) expect(r.warnings?.some((w) => w.includes('未声明任何动作'))).toBe(true)
+    const written = JSON.parse(readFileSync(join(user, 'watermarked', 'pet.json'), 'utf-8'))
+    expect(written.render.possibleWatermark).toBe(true)
+  })
+
+  it('live2d 包:游离资源找回后有真实表情/动作 → pet.json 不含 possibleWatermark 字段', () => {
+    const src = scratch(); const user = scratch()
+    const petSrc = makeLive2DPet(src, 'orphaned2', '游离2')
+    writeFileSync(join(petSrc, 'model', 'happy.exp3.json'), '{}')
+    const r = importPetFolder(petSrc, { bundledPetsDir: scratch(), userPetsDir: user })
+    expect(r.ok).toBe(true)
+    const written = JSON.parse(readFileSync(join(user, 'orphaned2', 'pet.json'), 'utf-8'))
+    expect(written.render.possibleWatermark).toBeUndefined()
   })
 
   it('live2d 包:纹理超过硬限制(>8192px) → 拒绝导入,staging 清理干净', () => {

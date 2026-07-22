@@ -213,11 +213,12 @@ function importLive2DPet(
 
   const allModelFiles = listModelFilesRecursive(modelDir)
   const { patchedModel3Json, recoveredExpressionCount, recoveredMotionCount } = scanAndPatchOrphanResources(model3Json, allModelFiles)
+  const possibleWatermark = detectPossibleWatermarkProtection(patchedModel3Json)
   const warnings = [...budget.softWarnings]
   if (recoveredExpressionCount > 0 || recoveredMotionCount > 0) {
     warnings.push(`已自动找回 ${recoveredExpressionCount} 个表情文件、${recoveredMotionCount} 个动作文件`)
   }
-  if (detectPossibleWatermarkProtection(patchedModel3Json)) {
+  if (possibleWatermark) {
     warnings.push('该模型未声明任何动作/表情,可能需要额外处理才能正常显示角色')
   }
   if (manifest.thumbnail) {
@@ -233,6 +234,11 @@ function importLive2DPet(
     cpSync(srcDir, stagingDir, { recursive: true })
     const modelJsonStagingPath = join(stagingDir, manifest.render.model)
     writeFileSync(modelJsonStagingPath, JSON.stringify(patchedModel3Json, null, 2), 'utf-8')
+    if (possibleWatermark) {
+      const petJsonStagingPath = join(stagingDir, 'pet.json')
+      const patchedManifest = { ...manifest, render: { ...manifest.render, possibleWatermark: true } }
+      writeFileSync(petJsonStagingPath, JSON.stringify(patchedManifest, null, 2), 'utf-8')
+    }
     const finalDir = join(dirs.userPetsDir, manifest.id)
     renameSync(stagingDir, finalDir)
   } catch (e) {

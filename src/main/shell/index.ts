@@ -30,7 +30,8 @@ import {
   type VoiceRuntimeState,
   type VoiceArchiveResult,
   type GenieRuntimeState,
-  type PetChatListItem
+  type PetChatListItem,
+  type Live2DTransformPatch
 } from '@shared/ipc'
 import type { PetEvent, Bounds } from '@shared/petBrain'
 import type { PetVoice, PetRenderSource } from '@shared/petPackage'
@@ -56,6 +57,7 @@ import { resolveEffectivePetHome } from '../pets/resolveEffectivePetHome'
 import { listPets, importPetFolder, cleanupStaleStaging } from '../pets/petCatalog'
 import { buildPetChatList } from '../pets/petChatList'
 import { createPetAvatarCache, resolvePetDir } from '../pets/petAvatar'
+import { patchLive2DTransform } from '../pets/live2dTransformPatch'
 import { loadTranscript } from '../memory/transcriptStore'
 import { loadLines, pickLine } from '../lines/linesLoader'
 import { prepareImage } from '../media/imagePrep'
@@ -630,6 +632,23 @@ export function startShell(): void {
       return { ...source, resourceBaseUrl: `kibo-pet://${session.resourceToken}/` }
     }
     return source
+  })
+  ipcMain.handle(IPC.UPDATE_LIVE2D_TRANSFORM, async (_e, patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }> => {
+    const petJsonPath = join(session.petDir, 'pet.json')
+    let raw: unknown
+    try {
+      raw = JSON.parse(readFileSync(petJsonPath, 'utf-8'))
+    } catch (e) {
+      return { ok: false, message: `读取 pet.json 失败:${(e as Error).message}` }
+    }
+    const result = patchLive2DTransform(raw, patch)
+    if (!result.ok) return { ok: false, message: result.reason }
+    try {
+      writeFileSync(petJsonPath, JSON.stringify(result.raw, null, 2), 'utf-8')
+    } catch (e) {
+      return { ok: false, message: `写入 pet.json 失败:${(e as Error).message}` }
+    }
+    return { ok: true }
   })
   ipcMain.handle(IPC.GET_WINDOW_BOUNDS, async (): Promise<WindowBounds> => {
     const [x, y] = petWin.getPosition()

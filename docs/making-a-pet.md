@@ -43,6 +43,119 @@ pets/<pet-id>/
 }
 ```
 
+## 另一种做法：导入 Live2D 模型（实验性，替代上面的美术步骤）
+
+如果不想画精灵图，而是已经有一个 Live2D Cubism 3/4/5 模型（自己做的，或购买的商用模型），可以走这条路线代替上面"第一步"，**从"第二步：写人设"开始完全通用**，两条路线共用。
+
+> ⚠️ Live2D 渲染刚刚在 Phase 4 落地，**agent 开发会话里从未跑过真机验证，以下所有结论都来自跟用户一起真机联调的第一手经验**，比精灵图路线新得多、坑也多得多，请耐心按步骤来。
+
+### 0. 前置准备
+
+先跑一次（只需一次）：
+
+```bash
+pnpm live2d:setup
+```
+
+这是从 Live2D 官网下载 Cubism Core 运行时的必需步骤，不装的话任何 Live2D 模型都加载不出来（控制台会看到 `boot failed` 之类的报错）。
+
+### 1. 准备文件夹
+
+```
+pets/<pet-id>/          # 或任意路径,导入时选中这个文件夹
+├── pet.json            # 必需,自己写(不像精灵图那样有工具自动生成)
+└── <模型目录>/           # 目录名随意,pet.json 里指定相对路径即可
+    ├── xxx.model3.json
+    ├── xxx.moc3
+    ├── textures/…
+    ├── motions/…        # 可选
+    └── expressions/…    # 可选
+```
+
+`render.model` **必须是相对宠物包根目录的相对路径**，不能是带盘符的绝对路径（`D:\...`）——导入器的安全校验会直接拒绝绝对路径，报 `render.model 路径不安全`。
+
+### 2. `pet.json` 的 live2d 结构
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "my_character",
+  "displayName": "我的角色",
+  "description": "非空字符串,随便写一句",
+  "render": {
+    "type": "live2d",
+    "model": "模型目录/xxx.model3.json",
+    "viewport": { "width": 360, "height": 480, "resolutionCap": 1.5 },
+    "transform": { "scale": 1, "offsetX": 0, "offsetY": 0, "anchorX": 0.5, "anchorY": 1, "bubbleAnchorX": 0.5, "bubbleAnchorY": 0 },
+    "interaction": { "mirrorOnWalk": true, "mouseTracking": true, "lipSyncParameter": "ParamMouthOpenY" },
+    "stateMap": {
+      "idle": { "motionGroup": "Idle", "selection": "random", "loop": true }
+    }
+  }
+}
+```
+
+`id`/`displayName`/`description` **三个都必须是非空字符串**——写空字符串 `""` 会导入失败，报 `manifest.xxx must be a non-empty string`（很容易踩，随手写一句占位文字就行，不需要多讲究）。
+
+`stateMap` 的键沿用宠物已有的视觉状态（`idle`/`walk-left`/`walk-right`/`drag`/`sleep`/`greet`/`thinking`/`talk`），对应到模型真实存在的 Motion Group，没写的状态会自然回退到 idle 或自然待机。**`transform.scale`/`transform.offsetY` 这两个数字没法凭感觉瞎填**——不同模型的"原生像素单位"差异极大，同一个 `scale:1` 在这个模型上是正常大小，在另一个模型上可能大出二三十倍。必须按下面第 4 步实测。
+
+### 3. 导入
+
+设置窗 →「导入宠物包…」→ 选中整个宠物包文件夹（不是选 `.model3.json` 单个文件）。
+
+导入时可能看到这些提示，都不代表失败：
+
+- 纹理超过 4 张 4096×4096 会给性能警告；单张纹理超过 **8192×8192** 或数量超过 **16 张**会被硬性拒绝（先把贴图降采样到 8192 以内再导入）。
+- 游离的 `.exp3.json`/`.motion3.json` 文件（没有被 `model3.json` 声明引用的）会被**自动扫描找回**，统一归到一个叫 `Recovered` 的动作组里，提示"已自动找回 N 个表情文件、N 个动作文件"。
+- 模型完全没有声明任何动作/表情时会提示"可能需要额外处理才能正常显示角色"——见下面第 6 条水印说明。
+
+### 4. 自动测出合适的缩放/位置
+
+导入后第一次启动 `pnpm preview` 加载这个宠物时，渲染器会自动测量模型真实尺寸，算出能让它完整居中显示（默认留 8px 边距）、"脚底贴底部"的 scale/位置，现场应用后立即写回 `%APPDATA%\kibo-pet\pets\<id>\pet.json`（打上 `render.transform.autoFitted: true`）。以后每次启动都直接读这份写好的数值，不会重复计算——**通常不需要任何手动操作**。
+
+如果对自动算出来的效果不满意，想自己动手核对或覆盖，见第 7 步"高级：手动核对/覆盖对齐结果"。
+
+### 5. 检查真正可用的动作/表情名字
+
+购买或下载的模型，实际可用的动作组/表情名字不一定是 `Idle`/`idle` 这种"看起来应该对"的名字，尤其是游离资源自动找回后统一叫 `Recovered`。导入后在 Console 里查一下真实值，再回填到 `stateMap`：
+
+```js
+const { model } = window.__kiboLive2D
+console.log('动作组:', model.internalModel.motionManager.definitions)
+console.log('表情:', model.internalModel.motionManager.expressionManager?.definitions)
+```
+
+### 6. 遇到"请勿多人使用/联系客服"之类的告示画面卡住不动
+
+这是购买模型常见的防盗版水印保护——模型本身没有声明任何真实动作/表情时会一直停在卖家的版权告示图上。导入时如果检测到这种情况（第 3 步会看到"该模型未声明任何动作/表情，可能需要额外处理才能正常显示角色"提示），`pet.json` 会被打上 `render.possibleWatermark: true` 标记；运行时只要 `stateMap.idle` 没有显式声明 `expression`，就会自动挑一个模型自带的表情调用一次尝试破冰（**只声明 `motionGroup` 往往不够**，真正让画面切到角色本体的是应用一个真实表情，不是播放动作）——**大多数情况不需要手动操作**。
+
+如果自动破冰没有生效（比如模型确实没有任何可用表情，纯告示图水印包，或者自动挑中的表情长相不合适），仍可以按以下步骤手动核对/回填：在第 5 步查到的表情名字里挑一个（先在 Console 里试一下效果，确认不是哭脸/夸张表情之类不适合当日常待机状态的）：
+
+```js
+model.expression('某个表情名').then(ok => console.log('结果:', ok))
+```
+
+确认某个表情能让画面切走且长相正常之后，把它写进 `stateMap.idle`（显式声明后自动破冰不会再触发，尊重这里的手动配置）：
+
+```json
+"idle": { "motionGroup": "Recovered", "selection": "random", "loop": true, "expression": "某个表情名" }
+```
+
+`model.motion(...)`/`model.expression(...)` 调用返回 `false` 不一定代表真的失败——引擎自己内部有一套待机动作自动选择机制，有时会跟显式调用产生优先级竞争，返回值不完全可靠，以桌面上肉眼看到的实际效果为准。
+
+### 7. 高级：手动核对/覆盖对齐结果
+
+正常情况下第 4 步的自动对齐就够用了。如果遇到疑难模型（比如自动算出来的比例仍不满意），可以打开 DevTools Console（鼠标点在宠物窗口区域上按 **Ctrl+Shift+I** 或 F12）手动核对/覆盖：
+
+```js
+window.__kiboLive2D.autoFit()   // 重新测量并现场应用,想要不同留白可以传参数,比如 autoFit(20)
+window.__kiboLive2D.saveFit()   // 把上一步算出来的数值直接写回当前宠物的 pet.json(自动标记 autoFitted:true)
+```
+
+这一步会自动找到当前宠物**实际在用**的那份 `pet.json`（导入后应用读的是复制到 `%APPDATA%\kibo-pet\pets\<id>\pet.json` 的那一份，不是原始素材文件夹里的），只覆盖 `scale`/`offsetX`/`offsetY`/`autoFitted` 四个字段，`anchorX`/`anchorY`/`bubbleAnchorX`/`bubbleAnchorY` 这些锚点语义不会被动。写回后如果想让原始素材文件夹也保持同步（方便以后重新导入），把 `pets/<pet-id>/pet.json` 里的这几个字段手动抄一份过去即可。
+
+如果想自己动手核对细节而不是完全依赖自动计算，也可以直接读写 `window.__kiboLive2D.model`/`.app`（比如 `model.width`、`model.scale.set(...)`、`model.position.y = ...`），`autoFit()`/`saveFit()` 内部做的就是这些事，没有什么额外魔法。
+
 ## 第二步：写人设（`persona.md`）
 
 `persona.md` 是喂给 LLM 的 system prompt 素材，纯文本、Markdown 分块，改完**重启应用即生效**，不需要重新打包。约定分四块（不强制，但建议保留这个结构，方便对照维护）：

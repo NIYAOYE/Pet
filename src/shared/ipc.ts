@@ -6,6 +6,7 @@ import type { ReactionCategory } from './reactionPlanner'
 
 export const IPC = {
   GET_PET: 'pet:get',
+  UPDATE_LIVE2D_TRANSFORM: 'pet:updateLive2DTransform',
   MOVE_WINDOW: 'window:move',
   DRAG_START: 'window:drag-start',
   DRAG_END: 'window:drag-end',
@@ -114,6 +115,15 @@ export interface OverlayApi {
   cancel(): void
 }
 
+export interface Live2DTransformPatch {
+  scale: number
+  offsetX: number
+  offsetY: number
+  /** true=这次写入代表最终对齐值(自动测算完成,或人工核对后通过调试挂钩确认),
+   *  Live2DPetRenderer.load() 之后不会再重新计算。 */
+  autoFitted: boolean
+}
+
 export interface PetApi {
   getPet(): Promise<PetRenderSource>
   /** Resolves with the real post-move window/workArea bounds, so callers that
@@ -139,6 +149,11 @@ export interface PetApi {
   quit(): void
   /** 主进程通知宠物已换,渲染层重载精灵(重新 getPet + renderer.load()) */
   onPetChanged(cb: () => void): void
+  /** 把 scale/offsetX/offsetY/autoFitted 写回当前宠物的 pet.json(只覆盖这四个字段,
+   *  anchorX/anchorY/bubbleAnchorX/bubbleAnchorY 不变)。两个调用方:Live2DPetRenderer.load()
+   *  首次加载时的自动对齐,以及 window.__kiboLive2D 调试挂钩的人工核对/覆盖。
+   *  只有当前宠物是 live2d 包时才会成功。 */
+  updateLive2DTransform(patch: Live2DTransformPatch): Promise<{ ok: boolean; message?: string }>
 }
 
 export interface ChatApi {

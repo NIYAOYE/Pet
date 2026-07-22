@@ -192,4 +192,31 @@ describe('parseLive2DManifest', () => {
     const m = parseLive2DManifest({ ...validLive2D, thumbnail: 'thumbnail.png' })
     expect(m.thumbnail).toBe('thumbnail.png')
   })
+  it('accepts optional transform.autoFitted boolean', () => {
+    const m = parseLive2DManifest({
+      ...validLive2D,
+      render: { ...validLive2D.render, transform: { ...validLive2D.render.transform, autoFitted: true } }
+    })
+    expect(m.render.transform.autoFitted).toBe(true)
+  })
+  it('rejects non-boolean transform.autoFitted', () => {
+    const bad = {
+      ...validLive2D,
+      render: { ...validLive2D.render, transform: { ...validLive2D.render.transform, autoFitted: 'yes' } }
+    }
+    expect(() => parseLive2DManifest(bad)).toThrow(/autoFitted/)
+  })
+  it('accepts optional render.possibleWatermark boolean', () => {
+    const m = parseLive2DManifest({ ...validLive2D, render: { ...validLive2D.render, possibleWatermark: true } })
+    expect(m.render.possibleWatermark).toBe(true)
+  })
+  it('rejects non-boolean render.possibleWatermark', () => {
+    const bad = { ...validLive2D, render: { ...validLive2D.render, possibleWatermark: 'yes' } }
+    expect(() => parseLive2DManifest(bad)).toThrow(/possibleWatermark/)
+  })
+  it('both fields absent from a legacy manifest still parse fine', () => {
+    const m = parseLive2DManifest(validLive2D)
+    expect(m.render.transform.autoFitted).toBeUndefined()
+    expect(m.render.possibleWatermark).toBeUndefined()
+  })
 })
