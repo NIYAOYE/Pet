@@ -11,7 +11,7 @@
 ## Global Constraints
 
 - 不加 `"type": "module"` 到 `package.json`(会让 Electron 主进程崩)。
-- 每个任务改完跑 `pnpm typecheck` 且新增/受影响的 `pnpm vitest run` 用例全部通过才算完成这个任务。
+- 每个任务改完,该任务自己新增/修改的 `pnpm vitest run` 用例必须全部通过。`pnpm typecheck` 只要求**到 Task 14 完成时**整仓库全绿——Task 5 到 Task 13 是一条跨文件的强耦合接口迁移链(IPC 通道改名/`PetRenderer` 接口新增方法/两个具体渲染器/`PetController`/`main.ts`/`petWindow.ts`/`switchPet()`),这段范围内单个任务提交后 `pnpm typecheck` 报错是**预期行为**,每个任务的步骤里已经写明"预期报错,下一个任务会修"的具体位置——这不是任务未完成,是接口先行、消费方逐个跟进的刻意分段,任务审查时按这条判断,不要把"整仓库编译不过"当成这些任务本身的缺陷。
 - 涉及主进程/preload/渲染层/窗口的改动,在"真机验收"步骤里明确写出需要 `pnpm dev`/`pnpm preview` 肉眼确认的点,不谎称已用自动化验证。
 - 提交粒度:每个任务一次提交,conventional commit(`feat(scope): ...`/`refactor(scope): ...`),commit message 用中文。
 - 精灵包(sprite)窗口尺寸继续等于 `manifest.sheet.cellWidth × cellHeight`,不参与本阶段新增的夹取/脚底锚点体系(仅气泡锚点的默认值来自精灵包隐含行为,行为不变)。
