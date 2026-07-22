@@ -38,12 +38,6 @@ const noPetBanner = $<HTMLElement>('noPetBanner')
 const closeBtn = $<HTMLButtonElement>('closeBtn')
 closeBtn.addEventListener('click', () => window.close())
 
-// 设置窗口是独立的 BrowserWindow(独立 JS 全局),这里覆盖 window.petApi.updateLive2DTransform
-// 只影响本窗口——不会影响宠物窗口里真实的 window.petApi。Live2DPetRenderer.load() 首次
-// 自动对齐模型尺寸时会无条件调用这个方法持久化结果;预览的是尚未提交的 staging 包,
-// 绝不能借这个调用误写当前激活宠物的 pet.json,所以在本窗口里整体 stub 掉。
-window.petApi.updateLive2DTransform = async () => ({ ok: true })
-
 let pendingStaging: { stagingId: string; manifestId: string } | null = null
 let previewRenderer: Live2DPetRenderer | null = null
 
@@ -409,7 +403,10 @@ importPetBtn.addEventListener('click', async () => {
     importPreviewName.textContent = res.displayName
     appendWarnings(importPreviewWarnings, res.warnings)
     importPreview.style.display = 'block'
-    previewRenderer = new Live2DPetRenderer(importPreviewCanvas)
+    // 预览的是尚未提交的 staging 包,自动对齐结果绝不能持久化到当前激活宠物的 pet.json——
+    // 用构造函数注入一个 no-op,不能靠重新赋值 window.petApi 上的方法来做同样的事(那条路径
+    // 在严格模式下会直接抛 TypeError,见本文件顶部的历史教训)。
+    previewRenderer = new Live2DPetRenderer(importPreviewCanvas, async () => ({ ok: true }))
     try {
       await previewRenderer.load(res.previewSource)
     } catch (loadErr) {

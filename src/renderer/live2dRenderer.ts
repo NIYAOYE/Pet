@@ -5,6 +5,7 @@ import 'pixi.js/unsafe-eval'
 import { Application, extensions } from 'pixi.js'
 import { Live2DModel, Live2DPlugin } from 'untitled-pixi-live2d-engine/cubism'
 import type { PetRenderSource, Live2DManifest } from '@shared/petPackage'
+import type { Live2DTransformPatch } from '@shared/ipc'
 import type { PetRenderer, PetVisualState, PetHitResult, PetViewport } from './petRenderer'
 import { resolveStateMotion, nextSequentialIndex, type ResolvedMotion } from './live2dStateMapResolver'
 import { pointInBounds, toCanvasCoords } from './live2dHitTestFallback'
@@ -31,7 +32,16 @@ export class Live2DPetRenderer implements PetRenderer {
   private pendingBaseScale: number | null = null
   private pendingFit: { scale: number; offsetX: number; offsetY: number } | null = null
 
-  constructor(private canvas: HTMLCanvasElement) {}
+  /** persistTransform 默认调真实的 window.petApi.updateLive2DTransform;设置窗口预览一个尚未
+   *  提交的 staging 包时会显式传一个 no-op,不能通过重新赋值 window.petApi 上的方法来做同样的
+   *  事——contextBridge 暴露的对象在严格模式(此项目的渲染进程入口都是 <script type="module">,
+   *  ES 模块规范强制严格模式)下是只读的,赋值会直接抛 TypeError,曾经真的在真机上把整个设置窗口
+   *  script 崩在第一行、后面所有事件监听器都没挂上(2026-07-22 真机反馈,已用最小 contextBridge
+   *  探针在真实 Electron 里复现验证过)。构造函数参数注入才是这个问题唯一站得住的修法。 */
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private persistTransform: (patch: Live2DTransformPatch) => Promise<{ ok: boolean; message?: string }> = (patch) => window.petApi.updateLive2DTransform(patch)
+  ) {}
 
   async load(source: PetRenderSource): Promise<void> {
     if (source.type !== 'live2d') throw new Error('Live2DPetRenderer 只能加载 type:"live2d" 的 PetRenderSource')
@@ -73,7 +83,7 @@ export class Live2DPetRenderer implements PetRenderer {
     // 而此时主进程 session 还指向旧的精灵包——写入会被 patchLive2DTransform 拒绝(manifest 类型不符),
     // 不会写坏数据,但这次切换的自动对齐结果不会被保存,下次冷启动会重新算一遍。这是已知的良性
     // 不对称(与同类型 Live2D→Live2D 路径把持久化推迟到 commitSwap() 不同),不是 bug。
-    if (fit) void window.petApi.updateLive2DTransform({ ...fit, autoFitted: true })
+    if (fit) void this.persistTransform({ ...fit, autoFitted: true })
     app.stage.addChild(model)
     this.model = model
 
@@ -93,7 +103,7 @@ export class Live2DPetRenderer implements PetRenderer {
       },
       saveFit: async () => {
         if (!lastFit) return { ok: false, message: '还没调用过 autoFit(),没有可保存的数值' }
-        return window.petApi.updateLive2DTransform({ ...lastFit, autoFitted: true })
+        return this.persistTransform({ ...lastFit, autoFitted: true })
       }
     }
   }
@@ -278,7 +288,7 @@ export class Live2DPetRenderer implements PetRenderer {
     // 只有走到这里(commit 已完成)才持久化:main 进程按 Task 13 的协议,只有在收到
     // renderer 的 prepare 成功结果后才会把 session 切到这个新宠物,再发 PET_COMMIT——
     // 所以此时 main 的 session.petDir 已经指向这个新宠物,IPC 写入落盘的位置是对的。
-    if (this.pendingFit) void window.petApi.updateLive2DTransform({ ...this.pendingFit, autoFitted: true })
+    if (this.pendingFit) void this.persistTransform({ ...this.pendingFit, autoFitted: true })
     this.sequentialIndexByGroup.clear()
     this.pendingModel = null
     this.pendingManifest = null

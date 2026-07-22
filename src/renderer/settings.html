@@ -348,6 +348,12 @@
         <button id="save">保存</button>
       </footer>
     </div>
+    <!-- untitled-pixi-live2d-engine 的 Live2DPlugin 模块顶层求值时要求 Cubism 运行时全局
+         (Live2DCubismCore)已经就位,否则直接抛错——settings.ts 顶层静态 import 了
+         Live2DPetRenderer(供导入预览面板用),所以这个经典 <script> 标签必须放在
+         type="module" 脚本之前同步执行完(与 index.html 里宠物窗口的顺序一致),
+         不能假设 CSP 补全就够了。 -->
+    <script src="./live2dcubismcore.js"></script>
     <script type="module" src="./settings.ts"></script>
   </body>
 </html>
